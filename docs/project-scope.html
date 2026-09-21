@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Online Test Platform — What We Are Building</title>
+<style>
+  :root{
+    --bg:#FFFFFF;
+    --panel:#FFFDF5;
+    --ink:#1C1B17;
+    --ink-2:#55524A;
+    --ink-3:#8A867B;
+    --rule:#E7E4DA;
+    --yellow:#F2B705;
+    --yellow-deep:#8A6503;
+    --yellow-soft:#FEF6DC;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px;
+    line-height:1.6;
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:0 24px 80px}
+
+  header{padding:52px 0 26px;border-bottom:3px solid var(--yellow);margin-bottom:8px}
+  .kicker{
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--yellow-deep);font-weight:700;margin-bottom:10px;
+  }
+  h1{font-size:38px;line-height:1.15;margin:0 0 12px;letter-spacing:-.01em}
+  header p{margin:0;color:var(--ink-2);font-size:17px;max-width:62ch}
+
+  section{margin-top:44px}
+  h2{font-size:22px;margin:0 0 6px;display:flex;align-items:center;gap:12px}
+  h2 .dot{width:11px;height:11px;border-radius:50%;background:var(--yellow);flex:none}
+  .sectionnote{color:var(--ink-3);font-size:14.5px;margin:0 0 20px;max-width:62ch}
+
+  ol{list-style:none;counter-reset:pt;margin:0;padding:0}
+  ol li{
+    counter-increment:pt;
+    position:relative;
+    padding:14px 18px 14px 58px;
+    border:1px solid var(--rule);
+    border-radius:6px;
+    background:var(--panel);
+    margin-bottom:8px;
+  }
+  ol li::before{
+    content:counter(pt);
+    position:absolute;left:16px;top:14px;
+    width:26px;height:26px;border-radius:6px;
+    background:var(--yellow);color:var(--ink);
+    font-size:13px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+  }
+  ol li b{display:block;font-size:16px;margin-bottom:2px}
+  ol li span{color:var(--ink-2);font-size:14.5px}
+
+  .box{
+    border:1px solid var(--rule);border-left:5px solid var(--yellow);
+    background:var(--yellow-soft);border-radius:6px;
+    padding:18px 22px;margin-top:22px;
+  }
+  .box b{display:block;margin-bottom:4px}
+  .box p{margin:0;color:var(--ink-2);font-size:14.5px}
+
+  table{border-collapse:collapse;width:100%;margin-top:18px;font-size:14.5px}
+  th{
+    text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-3);font-weight:700;padding:10px 14px;
+    border-bottom:2px solid var(--rule);
+  }
+  td{padding:10px 14px;border-bottom:1px solid var(--rule);color:var(--ink-2)}
+  td:first-child{color:var(--ink);font-weight:600;white-space:nowrap;width:52px}
+  tr:last-child td{border-bottom:none}
+
+  footer{
+    margin-top:52px;padding-top:20px;border-top:3px solid var(--yellow);
+    color:var(--ink-3);font-size:13.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="kicker">Project Scope</div>
+  <h1>Online Test Platform</h1>
+  <p>A department-hosted examination system with two panels. Staff build and analyse tests, students take them under a locked screen with a countdown. Everything runs on our own college server.</p>
+</header>
+
+<section>
+  <h2><span class="dot"></span>Admin Panel</h2>
+  <p class="sectionnote">What staff can do.</p>
+  <ol>
+    <li><b>Create student accounts from an Excel sheet</b><span>Upload a file containing roll number, name and email. An account is created for every row with a default password, and a printable list is generated to hand out.</span></li>
+    <li><b>Reset any password from the panel</b><span>Takes a few seconds. This replaces email-based recovery, which cannot work on an offline network.</span></li>
+    <li><b>Create a test with a title and a duration</b><span>The duration set here becomes the countdown on the student screen.</span></li>
+    <li><b>Split a test into sections</b><span>Section A, Section B, and so on, or named by topic. This is what makes topic-wise analysis possible afterwards.</span></li>
+    <li><b>Add questions and choose the type</b><span>Multiple choice with one answer, multiple choice with several correct answers, or fill in the blank. The form changes to suit the type selected.</span></li>
+    <li><b>Set marks per section, override per question</b><span>One value covers every question in a section. Any single question can be given a different mark, so a two-mark question can sit among one-mark ones. Negative marking is optional.</span></li>
+    <li><b>Upload questions in bulk</b><span>Excel works exactly and offline. Word and PDF are also accepted, with a review screen where staff correct anything the extraction got wrong before saving.</span></li>
+    <li><b>See results and rankings</b><span>A ranked list per test showing the top performer, the lowest performer, the class average, and the highest and lowest scores.</span></li>
+    <li><b>Analyse performance topic-wise</b><span>Average score per section, so it is immediately visible that the class did well in Section A and poorly in Section B. Also shows how many students got each individual question right.</span></li>
+    <li><b>Export everything to Excel</b><span>Results and analysis download as a spreadsheet for records and for sharing with recruiters.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="dot"></span>Student Panel</h2>
+  <p class="sectionnote">What a student experiences.</p>
+  <ol start="11">
+    <li><b>Log in with roll number</b><span>Using the default password issued by staff. The student is required to set their own password the first time they sign in.</span></li>
+    <li><b>See assigned tests and start one</b><span>The timer begins only when the student clicks start, and counts down from the duration set by the admin.</span></li>
+    <li><b>Take the test under a locked screen</b><span>The browser is forced into full screen. Copy, cut, paste, right-click and text selection are all disabled while the test is running.</span></li>
+    <li><b>Get warned for leaving the test</b><span>Switching tabs or leaving full screen is detected immediately and shows a warning. After a set number of warnings the test submits itself.</span></li>
+    <li><b>Submit automatically when time runs out</b><span>Answers save continuously as they are chosen, so a browser crash or a power cut does not lose the attempt.</span></li>
+    <li><b>See the score</b><span>Displayed after submission, with a section-wise breakdown if staff choose to release it.</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="dot"></span>Database and Hosting</h2>
+  <p class="sectionnote">Where everything is stored.</p>
+  <ol start="17">
+    <li><b>PostgreSQL running on the college local server</b><span>Question banks, student accounts, tests, answers and results all live in one database on a machine inside the department.</span></li>
+    <li><b>No internet needed during a test</b><span>Students reach the application over the college network. If the campus connection drops mid-drive, nothing stops.</span></li>
+    <li><b>Student data never leaves the campus</b><span>Roll numbers, emails and marks stay on our own hardware rather than a cloud service.</span></li>
+  </ol>
+
+  <div class="box">
+    <b>Why local PostgreSQL instead of Supabase</b>
+    <p>The hosted version of Supabase needs an internet connection, which would lock every student out mid-test if the campus link fails. Self-hosting it means maintaining roughly eight containers. Plain PostgreSQL is a single service that any faculty member who knows SQL can read.</p>
+  </div>
+</section>
+
+<section>
+  <h2><span class="dot"></span>Build Order</h2>
+  <p class="sectionnote">The sequence, so something is usable early.</p>
+  <table>
+    <tr><th>Step</th><th>What gets built</th></tr>
+    <tr><td>1</td><td>Database structure and login for both admin and students</td></tr>
+    <tr><td>2</td><td>Test builder with sections, question types and marks</td></tr>
+    <tr><td>3</td><td>Student test screen with the countdown and screen lockdown</td></tr>
+    <tr><td>4</td><td>Excel upload for student accounts and for questions</td></tr>
+    <tr><td>5</td><td>Results, rankings and section-wise analysis</td></tr>
+    <tr><td>6</td><td>Word and PDF question extraction with its review screen</td></tr>
+  </table>
+</section>
+
+<footer>
+  Scope document for the departmental online test platform. Prototype stage, nothing built yet.
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,572 @@
+<title>Proctoring &amp; AI Questions Plan</title>
+<style>
+  :root {
+    --bg: #FBFAF6;
+    --surface: #FFFFFF;
+    --surface-2: #F5F2EA;
+    --ink: #1C1A14;
+    --ink-2: #625C4E;
+    --ink-3: #8A8474;
+    --line: #E7E1D2;
+    --line-strong: #D8D0BC;
+    --accent: #F5B301;
+    --accent-deep: #C98A00;
+    --accent-wash: #FDF3D4;
+    --a-feat: #2E7D6B;      /* generation / reuse — teal-green */
+    --a-feat-wash: #E2F1EC;
+    --b-feat: #B4531F;      /* proctoring — burnt orange */
+    --b-feat-wash: #FBE8DC;
+    --risk: #A8341F;
+    --risk-wash: #FBE4DE;
+    --shadow: 0 1px 2px rgba(28,26,20,.04), 0 8px 24px -12px rgba(28,26,20,.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #16150F;
+      --surface: #1F1D15;
+      --surface-2: #26241A;
+      --ink: #F3EFE2;
+      --ink-2: #B8B2A0;
+      --ink-3: #85806F;
+      --line: #322F23;
+      --line-strong: #423E2E;
+      --accent: #FBC02D;
+      --accent-deep: #F5B301;
+      --accent-wash: #362D12;
+      --a-feat: #6FD3BA;
+      --a-feat-wash: #16302A;
+      --b-feat: #E8894F;
+      --b-feat-wash: #35200F;
+      --risk: #EF8A72;
+      --risk-wash: #351712;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #16150F;
+    --surface: #1F1D15;
+    --surface-2: #26241A;
+    --ink: #F3EFE2;
+    --ink-2: #B8B2A0;
+    --ink-3: #85806F;
+    --line: #322F23;
+    --line-strong: #423E2E;
+    --accent: #FBC02D;
+    --accent-deep: #F5B301;
+    --accent-wash: #362D12;
+    --a-feat: #6FD3BA;
+    --a-feat-wash: #16302A;
+    --b-feat: #E8894F;
+    --b-feat-wash: #35200F;
+    --risk: #EF8A72;
+    --risk-wash: #351712;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding-inline: 22px;
+    padding-block: 0 72px;
+  }
+  code, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  /* ---- header ---- */
+  header.masthead {
+    padding-block: 52px 34px;
+    border-bottom: 2px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+    margin: 0 0 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .eyebrow .status {
+    background: var(--accent);
+    color: #241E00;
+    padding: 2px 9px;
+    border-radius: 100px;
+    letter-spacing: .1em;
+    font-weight: 600;
+  }
+  h1 {
+    font-family: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+    font-weight: 700;
+    font-size: clamp(30px, 6vw, 46px);
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+    margin: 0 0 18px;
+  }
+  h1 .hl { color: var(--accent-deep); }
+  .dek {
+    font-size: 17px;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0;
+  }
+  .meta {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 26px;
+    font-size: 13px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+  }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+
+  /* ---- section scaffolding ---- */
+  section { padding-block: 40px; border-bottom: 1px solid var(--line); }
+  .sec-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 0 0 8px;
+  }
+  h2 {
+    font-family: "Bricolage Grotesque", "IBM Plex Sans", sans-serif;
+    font-weight: 700;
+    font-size: clamp(22px, 3.6vw, 29px);
+    letter-spacing: -0.01em;
+    line-height: 1.12;
+    text-wrap: balance;
+    margin: 0 0 8px;
+  }
+  .lede { color: var(--ink-2); font-size: 15.5px; max-width: 64ch; margin: 0; }
+
+  /* ---- two-up feature summary ---- */
+  .feat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    margin-top: 26px;
+  }
+  .feat {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .feat::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    background: var(--tint, var(--accent));
+  }
+  .feat.a { --tint: var(--a-feat); }
+  .feat.b { --tint: var(--b-feat); }
+  .feat .tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--tint);
+    background: var(--tint-wash);
+    padding: 3px 9px;
+    border-radius: 6px;
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  .feat.a .tag { --tint-wash: var(--a-feat-wash); }
+  .feat.b .tag { --tint-wash: var(--b-feat-wash); }
+  .feat h3 {
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-size: 19px;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .feat p { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+  /* ---- constraint callout ---- */
+  .callout {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 16px;
+    background: var(--accent-wash);
+    border: 1px solid var(--line-strong);
+    border-left: 5px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px 22px;
+    margin-top: 8px;
+  }
+  .callout .ic { font-size: 24px; line-height: 1; }
+  .callout h2 { font-size: 20px; margin-bottom: 6px; }
+  .callout p { margin: 0; font-size: 14.5px; color: var(--ink-2); }
+  .callout code { background: var(--surface); padding: 1px 6px; border-radius: 5px; font-size: .92em; border: 1px solid var(--line); }
+
+  /* ---- decisions locked ---- */
+  .decisions { display: grid; gap: 12px; margin-top: 22px; }
+  .decision {
+    display: grid;
+    grid-template-columns: 168px 1fr;
+    gap: 18px;
+    align-items: baseline;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+  }
+  .decision:first-child { border-top: none; }
+  .decision dt {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .decision dd { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .decision .pick {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--accent-deep);
+    font-weight: 600;
+    margin-right: 6px;
+  }
+
+  /* ---- feature detail blocks ---- */
+  .steps { display: grid; gap: 16px; margin-top: 24px; }
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 20px;
+  }
+  .step-head {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin-bottom: 8px;
+  }
+  .step-key {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #241E00;
+    background: var(--tint, var(--accent));
+    padding: 2px 8px;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .step-head h4 {
+    margin: 0;
+    font-size: 16px;
+    font-family: "Bricolage Grotesque", sans-serif;
+    letter-spacing: -0.005em;
+  }
+  .step p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .step p + p { margin-top: 8px; }
+  .step .files {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+    padding: 2px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .chip.new { border-color: var(--a-feat); color: var(--a-feat); background: var(--a-feat-wash); }
+  section.grp-a .step-key { background: var(--a-feat); color: #04150F; }
+  section.grp-b .step-key { background: var(--b-feat); color: #1A0A02; }
+
+  /* ---- phases timeline ---- */
+  .phases { margin-top: 24px; display: grid; gap: 0; }
+  .phase {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 18px;
+    padding-bottom: 22px;
+    position: relative;
+  }
+  .phase:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 21px;
+    top: 34px;
+    bottom: -2px;
+    width: 2px;
+    background: var(--line-strong);
+  }
+  .phase .num {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--accent);
+    color: var(--accent-deep);
+    font-family: "Bricolage Grotesque", sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+  .phase.done .num { background: var(--accent); color: #241E00; border-color: var(--accent); }
+  .phase .body h4 {
+    margin: 9px 0 4px;
+    font-size: 16px;
+    font-family: "Bricolage Grotesque", sans-serif;
+  }
+  .phase .body p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .phase .milestone {
+    display: inline-block;
+    margin-top: 7px;
+    font-size: 12px;
+    font-family: "IBM Plex Mono", monospace;
+    color: var(--a-feat);
+    background: var(--a-feat-wash);
+    border-radius: 6px;
+    padding: 2px 8px;
+  }
+
+  /* ---- verification / risks lists ---- */
+  ul.clean { list-style: none; margin: 22px 0 0; padding: 0; display: grid; gap: 12px; }
+  ul.clean li {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  ul.clean li b { color: var(--ink); font-weight: 600; }
+  ul.clean .mk { color: var(--accent-deep); font-weight: 700; }
+
+  .risk-item {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--risk);
+    border-radius: 10px;
+    padding: 14px 18px;
+  }
+  .risk-item h4 { margin: 0 0 4px; font-size: 15px; }
+  .risk-item p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+  .risks { display: grid; gap: 12px; margin-top: 22px; }
+
+  footer {
+    padding-top: 30px;
+    font-size: 12.5px;
+    color: var(--ink-3);
+    font-family: "IBM Plex Mono", monospace;
+  }
+
+  @media (max-width: 620px) {
+    .feat-grid { grid-template-columns: 1fr; }
+    .decision { grid-template-columns: 1fr; gap: 3px; }
+    .decision dt { color: var(--accent-deep); }
+  }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow"><span class="status">Approved plan</span> Placement Test Platform</p>
+    <h1>Camera Proctoring &amp; <span class="hl">AI Question Generation</span></h1>
+    <p class="dek">Two additions to the department's exam platform: a live-webcam proctoring layer during tests, and a subject-driven AI question generator for staff — both built to keep working on the offline lab LAN.</p>
+    <div class="meta">
+      <span><b>Scope</b> · 2 features, 1 sequenced build</span>
+      <span><b>Stack</b> · Next.js 16 · Drizzle · PostgreSQL</span>
+      <span><b>Status</b> · ready to implement</span>
+    </div>
+  </header>
+
+  <section>
+    <p class="sec-label">01 — At a glance</p>
+    <h2>What we're adding</h2>
+    <p class="lede">Both features reuse machinery the app already has, so the new surface area is small and the risk stays contained.</p>
+    <div class="feat-grid">
+      <div class="feat b">
+        <span class="tag">Feature B · during the exam</span>
+        <h3>Live camera proctoring</h3>
+        <p>Each student's webcam is required and stays on. The app takes periodic snapshots and runs on-device face detection to flag <b>no face</b>, <b>multiple faces</b>, and <b>camera off</b> — flags that escalate through the existing warning system. Runs fully offline on each lab PC.</p>
+      </div>
+      <div class="feat a">
+        <span class="tag">Feature A · while preparing a test</span>
+        <h3>AI question generation</h3>
+        <p>Staff pick <b>Subject → Subtopic → Difficulty → Type → Count</b> (with an optional free-text topic) and Claude drafts the questions. Everything lands on the <b>existing review screen</b> — nothing saves until a human approves it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sec-label">02 — The one hard constraint</p>
+    <div class="callout">
+      <div class="ic">🔒</div>
+      <div>
+        <h2>Cameras need HTTPS</h2>
+        <p>Browsers only allow webcam access in a <b>secure context</b> — HTTPS or <code>localhost</code>. The app currently runs over plain HTTP (<code>http://&lt;server-ip&gt;:3000</code>), where a lab desktop's camera <b>silently fails</b>. So proctoring forces a one-time move to HTTPS on the lab server (a reverse proxy with a certificate trusted on the ~60 machines). Development on <code>localhost</code> is unaffected.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sec-label">03 — Decisions locked</p>
+    <h2>Choices you made</h2>
+    <dl class="decisions">
+      <div class="decision">
+        <dt>Camera flags</dt>
+        <dd><span class="pick">count toward warnings</span> They escalate like tab-switching and can auto-submit. A <b>sustained-duration debounce</b> is added so a glance down never ends a test.</dd>
+      </div>
+      <div class="decision">
+        <dt>Snapshot retention</dt>
+        <dd><span class="pick">latest + flagged only</span> One live thumbnail per student plus a frame at each violation — small enough to live in Postgres, so <code>pg_dump</code> backs it up. No separate file store.</dd>
+      </div>
+      <div class="decision">
+        <dt>Topic input</dt>
+        <dd><span class="pick">dropdowns + free-text</span> Seeded, admin-editable Subject/Subtopic lists, plus a free-text override for anything not listed.</dd>
+      </div>
+      <div class="decision">
+        <dt>Build order</dt>
+        <dd><span class="pick">both, one plan</span> Sequenced so the generator (no deployment change) is usable before the proctoring work lands.</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="grp-a">
+    <p class="sec-label">04 — Feature A · detail</p>
+    <h2>AI question generation</h2>
+    <p class="lede">Slots into the existing extract → review → commit pipeline. The generator only changes the <em>input</em> — from "a document" to "a taxonomy selection."</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-head"><span class="step-key">A1</span><h4>Taxonomy in the database</h4></div>
+        <p>New admin-editable <code>subjects</code> and <code>subtopics</code> tables, seeded with a starter set (Computer Networks, OS, DBMS, OOPS, DSA, Java, Python, C, Aptitude, Logical Reasoning, Verbal). A small admin page manages them.</p>
+        <div class="files"><span class="chip">schema.ts</span><span class="chip">scripts/seed.ts</span><span class="chip new">+ admin/subjects/page.tsx</span><span class="chip new">+ actions/taxonomy.ts</span></div>
+      </div>
+      <div class="step">
+        <div class="step-head"><span class="step-key">A2</span><h4>Generation library</h4></div>
+        <p>A new <code>ai-generate.ts</code> mirrors the proven <code>ai-parse.ts</code>: same Claude client, <code>claude-opus-5</code>, the strict tool schema, and the refusal guard. The model is told to produce exactly N questions at the chosen difficulty, give each an explanation, and self-verify the marked answer.</p>
+        <div class="files"><span class="chip new">+ lib/ai-generate.ts</span><span class="chip">lib/ai-parse.ts</span></div>
+      </div>
+      <div class="step">
+        <div class="step-head"><span class="step-key">A3</span><h4>Shared review screen &amp; panel</h4></div>
+        <p>The existing <code>ReviewScreen</code> is extracted so both document-import and generation use the same reviewer. A new cascading dropdown panel drives generation and feeds drafts straight into it; saving reuses <code>commitReviewedQuestions</code> unchanged.</p>
+        <div class="files"><span class="chip new">+ question-generate.tsx</span><span class="chip new">+ review-screen.tsx</span><span class="chip">tests/[id]/page.tsx</span><span class="chip new">+ actions/generate-questions.ts</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grp-b">
+    <p class="sec-label">05 — Feature B · detail</p>
+    <h2>Camera proctoring</h2>
+    <p class="lede">Capture and detection run on each student's PC; flags travel through the same funnel as every other violation, and the server stays authoritative.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-head"><span class="step-key">B1</span><h4>HTTPS &amp; cookie</h4></div>
+        <p>Serve the app behind a Caddy reverse proxy with a locally-trusted certificate; make the session cookie's <code>secure</code> flag environment-driven. Documented in the README's lab-server section.</p>
+        <div class="files"><span class="chip">lib/session.ts</span><span class="chip">.env.example</span><span class="chip">README.md</span></div>
+      </div>
+      <div class="step">
+        <div class="step-head"><span class="step-key">B2</span><h4>Snapshot storage</h4></div>
+        <p>A new <code>proctorSnapshots</code> table holds the latest thumbnail (one upserted row per student) plus flagged frames, stored as compact base64 JPEGs directly in Postgres.</p>
+        <div class="files"><span class="chip">schema.ts</span></div>
+      </div>
+      <div class="step">
+        <div class="step-head"><span class="step-key">B3</span><h4>Capture, gate &amp; detection</h4></div>
+        <p>A camera gate on the start button (alongside the fullscreen gate) requires webcam permission. Bundled MediaPipe face detection runs on a throttled loop; a small pure, unit-tested state machine debounces the flags before they fire through the existing <code>flag()</code> funnel.</p>
+        <div class="files"><span class="chip new">+ proctor-camera.tsx</span><span class="chip new">+ lib/proctor-flags.ts</span><span class="chip new">+ actions/proctor.ts</span><span class="chip new">+ public/proctor/*</span><span class="chip">exam-runner.tsx</span></div>
+      </div>
+      <div class="step">
+        <div class="step-head"><span class="step-key">B4</span><h4>Live monitor integration</h4></div>
+        <p>An image route streams each student's latest frame so the 5-second poll stays light; the monitor cards gain a webcam thumbnail and the new flag types get human labels.</p>
+        <div class="files"><span class="chip new">+ api/proctor/[attemptId]/latest</span><span class="chip">actions/monitor.ts</span><span class="chip">monitor-view.tsx</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sec-label">06 — Build order</p>
+    <h2>Sequenced so something works early</h2>
+    <div class="phases">
+      <div class="phase">
+        <div class="num">1</div>
+        <div class="body"><h4>Schema &amp; seed</h4><p>Subjects, subtopics, and proctor-snapshots tables; push and seed the taxonomy.</p></div>
+      </div>
+      <div class="phase">
+        <div class="num">2</div>
+        <div class="body"><h4>AI generation</h4><p>Library, action, shared review screen, generate panel, subjects admin page.</p><span class="milestone">✓ fully testable — no deployment change</span></div>
+      </div>
+      <div class="phase">
+        <div class="num">3</div>
+        <div class="body"><h4>HTTPS &amp; cookie</h4><p>Reverse proxy, environment-driven secure cookie, README steps.</p></div>
+      </div>
+      <div class="phase">
+        <div class="num">4</div>
+        <div class="body"><h4>Camera capture</h4><p>Webcam gate, snapshot storage and upload.</p></div>
+      </div>
+      <div class="phase">
+        <div class="num">5</div>
+        <div class="body"><h4>Face detection</h4><p>MediaPipe bundle plus the debounced flags wired to the existing funnel.</p></div>
+      </div>
+      <div class="phase">
+        <div class="num">6</div>
+        <div class="body"><h4>Monitor</h4><p>Thumbnails, image route, and flag labels.</p></div>
+      </div>
+      <div class="phase">
+        <div class="num">7</div>
+        <div class="body"><h4>Tests &amp; docs</h4><p>Unit + end-to-end coverage and documentation.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="sec-label">07 — How we'll prove it works</p>
+    <h2>Verification</h2>
+    <ul class="clean">
+      <li><span class="mk">›</span><span><b>Unit tests</b> — the flag debounce state machine (a glance never flags, sustained absence flags once, recovery resets) and the generation draft-mapping, as pure logic.</span></li>
+      <li><span class="mk">›</span><span><b>End-to-end</b> — drive generation to a saved question with a deterministic stub; drive the camera gate with a fake media device and assert a snapshot appears on the monitor.</span></li>
+      <li><span class="mk">›</span><span><b>Manual pass</b> — over <code>localhost</code>: cover the camera → a flag appears after the debounce, the warning increments, and the thumbnail shows on the monitor; then generate Java → Collections → Medium → 5 MCQs → review → save.</span></li>
+      <li><span class="mk">›</span><span><b>Cost</b> — generation is authoring-time only: roughly <b>$3–4 per 1,000 questions</b> on <code>claude-opus-5</code>. Negligible in practice.</span></li>
+    </ul>
+  </section>
+
+  <section style="border-bottom:none;">
+    <p class="sec-label">08 — Open risks</p>
+    <h2>What to watch</h2>
+    <div class="risks">
+      <div class="risk-item">
+        <h4>HTTPS trust rollout</h4>
+        <p>The certificate must be trusted on all ~60 lab machines before a real drive — otherwise the camera fails everywhere. This is the biggest operational dependency.</p>
+      </div>
+      <div class="risk-item">
+        <h4>Face-detection false positives</h4>
+        <p>Mitigated by the debounce. If invigilators still see noise, the thresholds are the tuning knob — or we revisit the alert-only policy.</p>
+      </div>
+      <div class="risk-item">
+        <h4>AI answer correctness</h4>
+        <p>Mitigated by mandatory human review, model self-verification, and confidence flagging. Nothing saves without an admin approving it.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>Placement Test Platform · implementation plan · both features build together, generation first.</footer>
+
+</div>
