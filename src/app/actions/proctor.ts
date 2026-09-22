@@ -2,7 +2,7 @@
 
 import { and, eq, desc } from "drizzle-orm";
 import { db } from "@/db";
-import { attempts, proctorSnapshots, users } from "@/db/schema";
+import { attempts, proctorSnapshots, tests, users } from "@/db/schema";
 import { requireStudent, requireAdmin } from "@/lib/session";
 
 export type SnapshotKind = "latest" | "flagged";
@@ -39,12 +39,19 @@ export async function uploadSnapshot(
   }
 
   const [attempt] = await db
-    .select({ id: attempts.id, status: attempts.status })
+    .select({
+      id: attempts.id,
+      status: attempts.status,
+      cameraRequired: tests.cameraRequired,
+    })
     .from(attempts)
+    .innerJoin(tests, eq(tests.id, attempts.testId))
     .where(and(eq(attempts.id, attemptId), eq(attempts.userId, session.userId)))
     .limit(1);
 
   if (!attempt || attempt.status !== "in_progress") return { ok: false };
+  // No webcam frames are kept for a test with the camera switched off.
+  if (!attempt.cameraRequired) return { ok: false };
 
   const row = {
     attemptId,

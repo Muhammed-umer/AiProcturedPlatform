@@ -25,6 +25,14 @@ TypeScript, Drizzle ORM on PostgreSQL, Tailwind CSS v4.
   generated and shown once for printing.
 - Reset any student's password, and handle reset requests students raise.
 - Build tests with a duration, a warning limit and multiple sections.
+- Per-test settings, chosen at creation and editable later: attempts allowed
+  per student (1-10), shuffle questions for each student, shuffle options for
+  each student, and camera proctoring on or off. Each attempt gets its own
+  shuffle seed, so a retake is a freshly ordered paper. With several attempts
+  allowed, results and the Excel export rank each student on their **best**
+  attempt (the earlier one on a tie; `src/lib/attempts.ts`), and the rank list
+  shows how many attempts each student used. An unfinished attempt is always
+  resumed, never replaced, so a reload cannot buy a fresh paper or clock.
 - Three question types: one answer, several answers, and fill in the blank.
 - Marks default per section and can be overridden on any single question.
   Negative marking is per section and off by default.
@@ -66,6 +74,11 @@ TypeScript, Drizzle ORM on PostgreSQL, Tailwind CSS v4.
   server, so disconnecting or changing the system clock gains nothing.
 
 ### Camera proctoring
+
+Camera proctoring is a per-test switch, on by default. With it off, the camera
+step and the camera rules disappear from the start screen, and the server
+refuses camera warnings and webcam frames for that test whatever the browser
+sends. Full screen and tab switching are enforced either way.
 
 - A test opens on an instructions screen listing the rules, followed by a
   checklist the student must clear before the Continue button unlocks: turn the

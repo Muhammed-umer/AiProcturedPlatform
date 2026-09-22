@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, asc } from "drizzle-orm";
 import { db } from "@/db";
 import {
   tests,
@@ -10,6 +10,7 @@ import {
   questions,
 } from "@/db/schema";
 import { requireStudent } from "@/lib/session";
+import { bestAttemptPerStudent, attemptsLeft } from "@/lib/attempts";
 import { PageHeader, Badge, EmptyState } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +35,7 @@ export default async function StudentDashboard() {
             title: tests.title,
             instructions: tests.instructions,
             duration: tests.durationMinutes,
+            maxAttempts: tests.maxAttempts,
             // Aliased columns: interpolated Drizzle columns render unqualified
             // inside a raw subquery, making "id" ambiguous otherwise.
             questionCount: sql<number>`(
@@ -55,14 +57,19 @@ export default async function StudentDashboard() {
     .select({
       id: attempts.id,
       testId: attempts.testId,
+      attemptNumber: attempts.attemptNumber,
       status: attempts.status,
       totalScore: attempts.totalScore,
       maxScore: attempts.maxScore,
     })
     .from(attempts)
-    .where(eq(attempts.userId, session.userId));
+    .where(eq(attempts.userId, session.userId))
+    .orderBy(asc(attempts.attemptNumber));
 
-  const attemptByTest = new Map(myAttempts.map((a) => [a.testId, a]));
+  const attemptsByTest = new Map<string, typeof myAttempts>();
+  for (const a of myAttempts) {
+    attemptsByTest.set(a.testId, [...(attemptsByTest.get(a.testId) ?? []), a]);
+  }
 
   return (
     <div className="fade-up">
@@ -79,8 +86,15 @@ export default async function StudentDashboard() {
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {available.map((t) => {
-            const attempt = attemptByTest.get(t.id);
-            const done = attempt && attempt.status !== "in_progress";
+            const mine = attemptsByTest.get(t.id) ?? [];
+            const open = mine.find((a) => a.status === "in_progress");
+            const finished = mine.filter((a) => a.status !== "in_progress");
+            // The score shown is the best one, matching what results count.
+            const [best] = bestAttemptPerStudent(
+              finished.map((a) => ({ ...a, userId: session.userId })),
+            );
+            const left = attemptsLeft(t.maxAttempts, mine.length);
+            const done = !open && finished.length > 0;
 
             return (
               <div key={t.id} className="card p-5 flex flex-col">
@@ -90,7 +104,7 @@ export default async function StudentDashboard() {
                   </h2>
                   {done ? (
                     <Badge tone="good">Completed</Badge>
-                  ) : attempt ? (
+                  ) : open ? (
                     <Badge tone="warn">In progress</Badge>
                   ) : (
                     <Badge tone="brand">Available</Badge>
@@ -100,6 +114,12 @@ export default async function StudentDashboard() {
                 <div className="text-[13.5px] text-ink-2 tabular-nums mb-3">
                   {t.duration} minutes &middot; {t.questionCount} question
                   {t.questionCount === 1 ? "" : "s"}
+                  {t.maxAttempts > 1 && (
+                    <>
+                      {" "}
+                      &middot; {mine.length} of {t.maxAttempts} attempts used
+                    </>
+                  )}
                 </div>
 
                 {t.instructions && !done && (
@@ -108,29 +128,45 @@ export default async function StudentDashboard() {
                   </p>
                 )}
 
-                <div className="mt-auto pt-3">
-                  {done ? (
+                <div className="mt-auto pt-3 space-y-2.5">
+                  {best && (
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-[14.5px] font-semibold tabular-nums">
-                        {attempt.totalScore !== null
-                          ? `${Number(attempt.totalScore)} / ${Number(attempt.maxScore)}`
+                        {best.totalScore !== null
+                          ? `${Number(best.totalScore)} / ${Number(best.maxScore)}`
                           : "Submitted"}
+                        {finished.length > 1 && (
+                          <span className="ml-1.5 text-[12.5px] font-normal text-ink-3">
+                            best of {finished.length}
+                          </span>
+                        )}
                       </span>
                       <Link
-                        href={`/student/result/${attempt.id}`}
+                        href={`/student/result/${best.id}`}
                         className="btn-ghost btn-sm"
                       >
                         View result
                       </Link>
                     </div>
-                  ) : (
+                  )}
+
+                  {open ? (
                     <Link
                       href={`/student/test/${t.id}`}
                       className="btn-primary w-full"
                     >
-                      {attempt ? "Resume test" : "Start test"}
+                      Resume test
                     </Link>
-                  )}
+                  ) : left > 0 ? (
+                    <Link
+                      href={`/student/test/${t.id}`}
+                      className="btn-primary w-full"
+                    >
+                      {finished.length === 0
+                        ? "Start test"
+                        : `Retake test (attempt ${mine.length + 1} of ${t.maxAttempts})`}
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             );

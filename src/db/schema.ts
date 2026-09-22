@@ -110,6 +110,11 @@ export const tests = pgTable("tests", {
   status: testStatusEnum("status").notNull().default("draft"),
   /** Violations allowed before the attempt is submitted automatically. */
   maxWarnings: integer("max_warnings").notNull().default(3),
+  /**
+   * How many times one student may sit this test. Each attempt gets a fresh
+   * shuffle; results count the student's best one.
+   */
+  maxAttempts: integer("max_attempts").notNull().default(1),
   shuffleQuestions: boolean("shuffle_questions").notNull().default(true),
   shuffleOptions: boolean("shuffle_options").notNull().default(true),
   showScoreToStudent: boolean("show_score_to_student").notNull().default(true),
@@ -121,6 +126,12 @@ export const tests = pgTable("tests", {
   showAnswersToStudent: boolean("show_answers_to_student")
     .notNull()
     .default(true),
+  /**
+   * Whether the student's webcam must be on and is watched for the whole
+   * test. Off suits a practice test or a lab without working webcams; the
+   * full-screen and tab-switch rules still apply either way.
+   */
+  cameraRequired: boolean("camera_required").notNull().default(true),
   createdBy: uuid("created_by").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -230,6 +241,8 @@ export const attempts = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    /** 1 for the first sitting, 2 for the first retake, and so on. */
+    attemptNumber: integer("attempt_number").notNull().default(1),
     /** Per-student shuffle seed, so a paper can be reproduced for an audit. */
     seed: integer("seed").notNull(),
     status: attemptStatusEnum("status").notNull().default("in_progress"),
@@ -244,7 +257,11 @@ export const attempts = pgTable(
     maxScore: numeric("max_score", { precision: 8, scale: 2 }),
   },
   (t) => ({
-    pairIdx: uniqueIndex("attempts_test_user_idx").on(t.testId, t.userId),
+    pairIdx: uniqueIndex("attempts_test_user_number_idx").on(
+      t.testId,
+      t.userId,
+      t.attemptNumber,
+    ),
     testIdx: index("attempts_test_idx").on(t.testId),
   }),
 );

@@ -57,8 +57,8 @@ export default async function TakeTestPage({
     if (code === "ALREADY_SUBMITTED") {
       return (
         <Problem
-          title="You have already taken this test"
-          message="An attempt has been recorded for you. Each test can be taken once."
+          title="No attempts left for this test"
+          message="You have used every attempt this test allows. Your result is on your tests page."
         />
       );
     }

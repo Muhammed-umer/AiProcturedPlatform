@@ -70,6 +70,10 @@ test.describe.serial("admin manages groups and tests", () => {
     await page.getByLabel("Test title").fill(TEST_TITLE);
     await page.getByLabel("Duration in minutes").fill("20");
     await page.getByLabel("Warnings before auto-submit").fill("2");
+    // On by default; created without it to prove the choice is kept.
+    const camera = page.getByRole("checkbox", { name: /Camera proctoring/ });
+    await expect(camera).toBeChecked();
+    await camera.uncheck();
     await page
       .getByRole("button", { name: "Create and add questions" })
       .click();
@@ -80,6 +84,9 @@ test.describe.serial("admin manages groups and tests", () => {
     await expect(page.getByRole("heading", { name: TEST_TITLE })).toBeVisible();
     // Every new test starts with one section so the question form is usable.
     await expect(page.getByText("Section A")).toBeVisible();
+    await expect(
+      page.getByRole("checkbox", { name: /Camera proctoring/ }),
+    ).not.toBeChecked();
 
     // With no questions and no group, publishing must be refused and the
     // reason spelled out rather than the button silently doing nothing.
@@ -233,6 +240,48 @@ test.describe.serial("admin manages groups and tests", () => {
     ).not.toBeChecked();
     await expect(
       page.getByRole("checkbox", { name: /Show their score/ }),
+    ).toBeChecked();
+  });
+
+  test("edits attempts, shuffling and the camera", async ({ page }) => {
+    await signInAsAdmin(page);
+    await page.goto(`/admin/tests/${testId}`);
+
+    const attemptsField = page.getByLabel("Attempts allowed per student");
+    const shuffleQ = page.getByRole("checkbox", {
+      name: /Shuffle questions for each student/,
+    });
+    const shuffleO = page.getByRole("checkbox", {
+      name: /Shuffle options for each student/,
+    });
+    const camera = page.getByRole("checkbox", { name: /Camera proctoring/ });
+
+    // The defaults, with the camera left off at creation.
+    await expect(attemptsField).toHaveValue("1");
+    await expect(shuffleQ).toBeChecked();
+    await expect(shuffleO).toBeChecked();
+    await expect(camera).not.toBeChecked();
+
+    await attemptsField.fill("3");
+    await shuffleQ.uncheck();
+    await shuffleO.uncheck();
+    await camera.check();
+    const form = page.locator("form").filter({ has: camera });
+    await form.getByRole("button", { name: "Save" }).click();
+    await expect(form.getByText("Saved")).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByLabel("Attempts allowed per student")).toHaveValue(
+      "3",
+    );
+    await expect(
+      page.getByRole("checkbox", { name: /Shuffle questions/ }),
+    ).not.toBeChecked();
+    await expect(
+      page.getByRole("checkbox", { name: /Shuffle options/ }),
+    ).not.toBeChecked();
+    await expect(
+      page.getByRole("checkbox", { name: /Camera proctoring/ }),
     ).toBeChecked();
   });
 

@@ -4,7 +4,8 @@ import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createTest, type AdminState } from "@/app/actions/admin";
-import { Alert, PageHeader } from "@/components/ui";
+import { Alert, CheckboxRow, PageHeader } from "@/components/ui";
+import { MAX_ATTEMPTS_LIMIT } from "@/lib/attempts";
 
 export default function NewTestPage() {
   const router = useRouter();
@@ -88,6 +89,49 @@ export default function NewTestPage() {
               rows={4}
               className="input resize-y"
               placeholder="Shown to the student before the timer starts."
+            />
+          </div>
+
+          <div>
+            <label htmlFor="maxAttempts" className="label">
+              Attempts allowed per student
+            </label>
+            <input
+              id="maxAttempts"
+              name="maxAttempts"
+              type="number"
+              min={1}
+              max={MAX_ATTEMPTS_LIMIT}
+              defaultValue={1}
+              className="input max-w-[140px]"
+              required
+            />
+            <p className="text-[12.5px] text-ink-2 mt-1.5">
+              Results count each student&rsquo;s best attempt.
+            </p>
+          </div>
+
+          <div className="space-y-2.5">
+            <CheckboxRow
+              boxed
+              name="shuffleQuestions"
+              title="Shuffle questions for each student"
+              description="Every student gets the questions in a different order, within each section."
+              defaultChecked
+            />
+            <CheckboxRow
+              boxed
+              name="shuffleOptions"
+              title="Shuffle options for each student"
+              description="The choices under each question appear in a different order for every student."
+              defaultChecked
+            />
+            <CheckboxRow
+              boxed
+              name="cameraRequired"
+              title="Camera proctoring"
+              description="Students must keep their webcam on. No face, more than one person, or turning away counts as a warning. Turn this off for a practice test or a lab without webcams. Full screen and tab switching are checked either way."
+              defaultChecked
             />
           </div>
 

@@ -42,7 +42,11 @@ export default async function MonitorPage({
         }
       />
 
-      <MonitorView testId={id} initial={initial} />
+      <MonitorView
+        testId={id}
+        initial={initial}
+        cameraRequired={test.cameraRequired}
+      />
     </div>
   );
 }

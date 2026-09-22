@@ -1,7 +1,15 @@
 import ExcelJS from "exceljs";
 import { eq, and, ne, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { tests, attempts, users, sections, questions, answers } from "@/db/schema";
+import {
+  tests,
+  attempts,
+  users,
+  sections,
+  questions,
+  answers,
+} from "@/db/schema";
+import { bestAttemptPerStudent } from "@/lib/attempts";
 import { getSession } from "@/lib/session";
 import { summarize, sectionAverages, type ScoreRow } from "@/lib/analytics";
 
@@ -20,10 +28,11 @@ export async function GET(
   const [test] = await db.select().from(tests).where(eq(tests.id, id)).limit(1);
   if (!test) return new Response("Test not found", { status: 404 });
 
-  const attemptRows = await db
+  const allAttempts = await db
     .select({
       id: attempts.id,
       userId: attempts.userId,
+      attemptNumber: attempts.attemptNumber,
       totalScore: attempts.totalScore,
       maxScore: attempts.maxScore,
       warningCount: attempts.warningCount,
@@ -36,6 +45,9 @@ export async function GET(
     .from(attempts)
     .innerJoin(users, eq(users.id, attempts.userId))
     .where(and(eq(attempts.testId, id), ne(attempts.status, "in_progress")));
+
+  // A test may allow retakes; each student is ranked on their best one.
+  const attemptRows = bestAttemptPerStudent(allAttempts);
 
   const scoreRows: ScoreRow[] = attemptRows.map((a) => ({
     userId: a.userId,
@@ -99,12 +111,18 @@ export async function GET(
     ["Lowest score", summary.lowest],
     ["Passed (40% or above)", summary.passCount],
     ["Pass percentage", `${summary.passPercentage}%`],
-    ["Top performer", summary.topPerformer
-      ? `${summary.topPerformer.name} (${summary.topPerformer.rollNumber})`
-      : "-"],
-    ["Lowest performer", summary.lowestPerformer
-      ? `${summary.lowestPerformer.name} (${summary.lowestPerformer.rollNumber})`
-      : "-"],
+    [
+      "Top performer",
+      summary.topPerformer
+        ? `${summary.topPerformer.name} (${summary.topPerformer.rollNumber})`
+        : "-",
+    ],
+    [
+      "Lowest performer",
+      summary.lowestPerformer
+        ? `${summary.lowestPerformer.name} (${summary.lowestPerformer.rollNumber})`
+        : "-",
+    ],
   ].forEach(([k, v]) => sum.addRow({ k, v }));
 
   /* ------------------------------------------------------ topic-wise */

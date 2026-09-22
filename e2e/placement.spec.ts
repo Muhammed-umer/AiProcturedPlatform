@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signInAsAdmin, ADMIN_PASSWORD } from "./admin-auth";
+import { signInAsAdmin } from "./admin-auth";
 import ExcelJS from "exceljs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +13,6 @@ import { join } from "node:path";
 
 // The admin changes their own password on first login, which may already have
 // happened in another spec file; signInAsAdmin copes with either state.
-let adminPassword = ADMIN_PASSWORD;
 
 // Captured from the student import screen, then used to sit the exam.
 let studentRoll = "";
@@ -44,7 +43,6 @@ async function completeFirstLogin(page: Page, newPassword: string) {
 test.describe.serial("placement platform", () => {
   test("admin signs in and sets up their account", async ({ page }) => {
     await signInAsAdmin(page);
-    adminPassword = ADMIN_PASSWORD;
 
     await expect(
       page.getByRole("heading", { name: "Dashboard" }),
@@ -52,8 +50,7 @@ test.describe.serial("placement platform", () => {
   });
 
   test("admin imports students into a new group", async ({ page }) => {
-    await signIn(page, "ADMIN", adminPassword);
-    await page.waitForURL("**/admin");
+    await signInAsAdmin(page);
 
     // Build a real student spreadsheet on disk and upload it.
     const wb = new ExcelJS.Workbook();
@@ -93,8 +90,7 @@ test.describe.serial("placement platform", () => {
   test("admin builds a test with all three question types", async ({
     page,
   }) => {
-    await signIn(page, "ADMIN", adminPassword);
-    await page.waitForURL("**/admin");
+    await signInAsAdmin(page);
 
     await page.getByRole("link", { name: "Tests" }).click();
     await page.getByRole("link", { name: "Create test" }).first().click();
@@ -102,6 +98,7 @@ test.describe.serial("placement platform", () => {
 
     await page.getByLabel("Test title").fill(TEST_TITLE);
     await page.getByLabel("Duration in minutes").fill("30");
+    await page.getByLabel("Attempts allowed per student").fill("2");
     await page
       .getByRole("button", { name: "Create and add questions" })
       .click();
@@ -258,11 +255,20 @@ test.describe.serial("placement platform", () => {
     await expect(
       page.getByText("your answer").first(),
     ).toBeVisible();
+    await expect(page.getByText(/^Attempt 1 of 2\./)).toBeVisible();
+
+    // The test allows two attempts, so the dashboard offers a retake alongside
+    // the result of the first.
+    await page.goto("/student");
+    await expect(page.getByText("1 of 2 attempts used")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Retake test (attempt 2 of 2)" }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "View result" })).toBeVisible();
   });
 
   test("admin sees the result in the rank list", async ({ page }) => {
-    await signIn(page, "ADMIN", adminPassword);
-    await page.waitForURL("**/admin"); // let the login cookie settle first
+    await signInAsAdmin(page);
     await page.goto(`/admin/results/${testId}`);
 
     await expect(
@@ -275,8 +281,7 @@ test.describe.serial("placement platform", () => {
   });
 
   test("admin can open the live monitor", async ({ page }) => {
-    await signIn(page, "ADMIN", adminPassword);
-    await page.waitForURL("**/admin"); // let the login cookie settle first
+    await signInAsAdmin(page);
     await page.goto(`/admin/monitor/${testId}`);
     await expect(page.getByText(/Monitoring/)).toBeVisible();
     // The submitted attempt shows in the status column of the attempts table.
@@ -299,8 +304,7 @@ test.describe.serial("placement platform", () => {
   test("deleting a test returns to the list instead of a dead page", async ({
     page,
   }) => {
-    await signIn(page, "ADMIN", adminPassword);
-    await page.waitForURL("**/admin");
+    await signInAsAdmin(page);
 
     // A throwaway test, so the drive above stays intact.
     await page.goto("/admin/tests/new");
@@ -322,8 +326,7 @@ test.describe.serial("placement platform", () => {
   });
 
   test("camera review page lists the attempt", async ({ page }) => {
-    await signIn(page, "ADMIN", adminPassword);
-    await page.waitForURL("**/admin");
+    await signInAsAdmin(page);
     await page.goto(`/admin/monitor/${testId}`);
 
     // The Camera column links each row to its review page.

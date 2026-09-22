@@ -33,9 +33,12 @@ const VIOLATION_LABEL: Record<string, string> = {
 export function MonitorView({
   testId,
   initial,
+  cameraRequired = true,
 }: {
   testId: string;
   initial: LiveSnapshot;
+  /** Off for a test without camera proctoring: no thumbnails, no camera links. */
+  cameraRequired?: boolean;
 }) {
   const [snapshot, setSnapshot] = useState<LiveSnapshot>(initial);
   const [live, setLive] = useState(true);
@@ -72,6 +75,7 @@ export function MonitorView({
               ? "Live, refreshing every 5 seconds"
               : "Paused, this page is not updating"}
           </span>
+          {!cameraRequired && <Badge tone="warn">Camera proctoring off</Badge>}
         </div>
         <div className="flex gap-2">
           <Tooltip label="Fetch the latest progress straight away, without waiting for the next refresh.">
@@ -126,9 +130,7 @@ export function MonitorView({
                   const lowTime = a.remainingMs <= 60_000;
                   const pct =
                     a.totalQuestions > 0
-                      ? Math.round(
-                          (a.answeredCount / a.totalQuestions) * 100,
-                        )
+                      ? Math.round((a.answeredCount / a.totalQuestions) * 100)
                       : 0;
                   return (
                     <div
@@ -141,11 +143,13 @@ export function MonitorView({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
-                          <ProctorThumb
-                            attempt={a}
-                            stamp={snapshot.serverNow}
-                            size="card"
-                          />
+                          {cameraRequired && (
+                            <ProctorThumb
+                              attempt={a}
+                              stamp={snapshot.serverNow}
+                              size="card"
+                            />
+                          )}
                           <div className="min-w-0">
                             <div className="font-semibold text-[14.5px] truncate">
                               {a.name}
@@ -193,14 +197,17 @@ export function MonitorView({
                           </span>
                         )}
                         <div className="flex items-center gap-1.5">
-                          <Tooltip label="See this student's webcam and every moment the camera flagged.">
-                            <Link
-                              href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
-                              className="btn-ghost btn-sm"
-                            >
-                              Camera{a.flagCount > 0 ? ` (${a.flagCount})` : ""}
-                            </Link>
-                          </Tooltip>
+                          {cameraRequired && (
+                            <Tooltip label="See this student's webcam and every moment the camera flagged.">
+                              <Link
+                                href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
+                                className="btn-ghost btn-sm"
+                              >
+                                Camera
+                                {a.flagCount > 0 ? ` (${a.flagCount})` : ""}
+                              </Link>
+                            </Tooltip>
+                          )}
                           <Tooltip label="Finish this student's test now and mark it. They cannot go back in.">
                             <form action={forceSubmit}>
                               <input
@@ -208,7 +215,10 @@ export function MonitorView({
                                 name="attemptId"
                                 value={a.attemptId}
                               />
-                              <button className="btn-ghost btn-sm" type="submit">
+                              <button
+                                className="btn-ghost btn-sm"
+                                type="submit"
+                              >
                                 End
                               </button>
                             </form>
@@ -243,7 +253,7 @@ export function MonitorView({
                     <th className="th">Status</th>
                     <th className="th">Progress</th>
                     <th className="th">Warnings</th>
-                    <th className="th">Camera</th>
+                    {cameraRequired && <th className="th">Camera</th>}
                     <th className="th">Time left</th>
                   </tr>
                 </thead>
@@ -277,24 +287,26 @@ export function MonitorView({
                           <span className="text-ink-3">&mdash;</span>
                         )}
                       </td>
-                      <td className="td">
-                        <Link
-                          href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
-                          className="flex items-center gap-2 group"
-                          title="Open camera review"
-                        >
-                          <ProctorThumb
-                            attempt={a}
-                            stamp={snapshot.serverNow}
-                            size="row"
-                          />
-                          {a.flagCount > 0 && (
-                            <span className="text-[12px] font-semibold text-red-700 tabular-nums">
-                              {a.flagCount} flagged
-                            </span>
-                          )}
-                        </Link>
-                      </td>
+                      {cameraRequired && (
+                        <td className="td">
+                          <Link
+                            href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
+                            className="flex items-center gap-2 group"
+                            title="Open camera review"
+                          >
+                            <ProctorThumb
+                              attempt={a}
+                              stamp={snapshot.serverNow}
+                              size="row"
+                            />
+                            {a.flagCount > 0 && (
+                              <span className="text-[12px] font-semibold text-red-700 tabular-nums">
+                                {a.flagCount} flagged
+                              </span>
+                            )}
+                          </Link>
+                        </td>
+                      )}
                       <td className="td tabular-nums">
                         {a.status === "in_progress" ? (
                           clock(a.remainingMs)

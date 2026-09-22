@@ -177,3 +177,44 @@ export function Tooltip({
     </span>
   );
 }
+
+/**
+ * A checkbox with a bold title and a line of explanation, the whole row
+ * clickable. Uncontrolled, so it works inside a plain server-action form.
+ */
+export function CheckboxRow({
+  name,
+  title,
+  description,
+  defaultChecked,
+  boxed = false,
+}: {
+  name: string;
+  title: string;
+  description: React.ReactNode;
+  defaultChecked?: boolean;
+  /** Draw it as a bordered card, for use among ordinary form fields. */
+  boxed?: boolean;
+}) {
+  return (
+    <label
+      htmlFor={name}
+      className={clsx(
+        "flex items-start gap-3 cursor-pointer",
+        boxed && "rounded-xl border border-line bg-canvas px-4 py-3.5",
+      )}
+    >
+      <input
+        id={name}
+        name={name}
+        type="checkbox"
+        defaultChecked={defaultChecked}
+        className="mt-0.5 h-4.5 w-4.5 shrink-0 accent-brand-500 cursor-pointer"
+      />
+      <span className="min-w-0">
+        <span className="block text-[14px] font-semibold">{title}</span>
+        <span className="block text-[12.5px] text-ink-2">{description}</span>
+      </span>
+    </label>
+  );
+}

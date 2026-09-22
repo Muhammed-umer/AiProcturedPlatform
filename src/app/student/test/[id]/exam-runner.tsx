@@ -83,6 +83,9 @@ export function ExamRunner({
     examStartedRef.current = examStarted;
   }, [examStarted]);
 
+  // Set per test by the admin. When off, the webcam is never asked for.
+  const cameraOn = paper.cameraRequired;
+
   const question = paper.questions[current];
   const total = paper.questions.length;
 
@@ -116,7 +119,9 @@ export function ExamRunner({
         await document.exitFullscreen().catch(() => {});
       }
 
-      router.replace(`/student/result/${paper.attemptId}${auto ? "?auto=1" : ""}`);
+      router.replace(
+        `/student/result/${paper.attemptId}${auto ? "?auto=1" : ""}`,
+      );
     },
     [paper.attemptId, router, stopCamera],
   );
@@ -399,23 +404,24 @@ export function ExamRunner({
   // Warnings and uploads only once the exam is genuinely running.
   const cameraActive = examStarted && !terminated && !submitting;
 
-  const camera = stream ? (
-    <ProctorCamera
-      attemptId={paper.attemptId}
-      stream={stream}
-      active={cameraActive}
-      variant={examStarted ? "corner" : "gate"}
-      onViolation={flag}
-      onFaceCount={setFaceCount}
-      onStatus={setCameraStatus}
-    />
-  ) : null;
+  const camera =
+    cameraOn && stream ? (
+      <ProctorCamera
+        attemptId={paper.attemptId}
+        stream={stream}
+        active={cameraActive}
+        variant={examStarted ? "corner" : "gate"}
+        onViolation={flag}
+        onFaceCount={setFaceCount}
+        onStatus={setCameraStatus}
+      />
+    ) : null;
 
   // If the model could not load we cannot check the face, and blocking the
   // student out of their exam would be the worse failure.
   const faceCheckAvailable = faceGate && cameraStatus !== "no_model";
   const readyToStart =
-    Boolean(stream) && (!faceCheckAvailable || faceCount === 1);
+    !cameraOn || (Boolean(stream) && (!faceCheckAvailable || faceCount === 1));
 
   /* ------------------------------------------------------------ views -- */
 
@@ -508,6 +514,12 @@ export function ExamRunner({
             {paper.testTitle} &middot; {paper.questions.length} question
             {paper.questions.length === 1 ? "" : "s"} &middot;{" "}
             {Math.round(paper.remainingMs / 60000)} minutes
+            {paper.maxAttempts > 1 && (
+              <>
+                {" "}
+                &middot; attempt {paper.attemptNumber} of {paper.maxAttempts}
+              </>
+            )}
           </p>
 
           {/* -------------------------------------------------- the rules -- */}
@@ -520,18 +532,22 @@ export function ExamRunner({
               The test runs in <strong className="text-ink">full screen</strong>{" "}
               for its whole duration. Leaving full screen is a warning.
             </li>
-            <li>
-              Your <strong className="text-ink">camera stays on</strong>. Keep
-              your face visible and facing the screen.
-            </li>
-            <li>
-              Turning away from the screen for more than{" "}
-              <strong className="text-ink">3 seconds</strong> is a warning.
-            </li>
-            <li>
-              You must be <strong className="text-ink">alone</strong>. Nobody
-              else may appear in the camera view.
-            </li>
+            {cameraOn && (
+              <>
+                <li>
+                  Your <strong className="text-ink">camera stays on</strong>.
+                  Keep your face visible and facing the screen.
+                </li>
+                <li>
+                  Turning away from the screen for more than{" "}
+                  <strong className="text-ink">3 seconds</strong> is a warning.
+                </li>
+                <li>
+                  You must be <strong className="text-ink">alone</strong>.
+                  Nobody else may appear in the camera view.
+                </li>
+              </>
+            )}
             <li>
               Do not switch tabs or windows, and do not minimise the browser.
             </li>
@@ -553,7 +569,7 @@ export function ExamRunner({
             Checklist
           </h2>
 
-          {cameraError && (
+          {cameraOn && cameraError && (
             <div
               className="mb-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-800"
               role="alert"
@@ -562,63 +578,65 @@ export function ExamRunner({
             </div>
           )}
 
-          <div
-            className={`rounded-xl border px-4 py-3.5 ${
-              cameraChecked
-                ? "border-emerald-200 bg-emerald-50/60"
-                : "border-line bg-canvas"
-            }`}
-          >
-            <div className="flex items-start gap-3">
-              <span
-                className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[12px] font-bold ${
-                  cameraChecked
-                    ? "bg-emerald-500 text-white"
-                    : "bg-white border border-line-2 text-ink-3"
-                }`}
-                aria-hidden="true"
-              >
-                {cameraChecked ? "✓" : "1"}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[14px] font-semibold">
-                  Check your camera
-                </div>
-                <p className="text-[13px] text-ink-2 mt-0.5">
-                  {stream
-                    ? faceMessage.text
-                    : "Turn the camera on and make sure you can see yourself clearly."}
-                </p>
-
-                {stream && (
-                  <div className="mt-3 max-w-[240px]">
-                    {camera}
-                    <div
-                      className={`mt-2 rounded-md border px-3 py-1.5 text-[12.5px] text-center ${toneClass}`}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      {faceMessage.text}
-                    </div>
+          {cameraOn && (
+            <div
+              className={`rounded-xl border px-4 py-3.5 ${
+                cameraChecked
+                  ? "border-emerald-200 bg-emerald-50/60"
+                  : "border-line bg-canvas"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <span
+                  className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[12px] font-bold ${
+                    cameraChecked
+                      ? "bg-emerald-500 text-white"
+                      : "bg-white border border-line-2 text-ink-3"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {cameraChecked ? "✓" : "1"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] font-semibold">
+                    Check your camera
                   </div>
-                )}
+                  <p className="text-[13px] text-ink-2 mt-0.5">
+                    {stream
+                      ? faceMessage.text
+                      : "Turn the camera on and make sure you can see yourself clearly."}
+                  </p>
 
-                {!stream && (
-                  <button
-                    onClick={() => void enableCamera()}
-                    className="btn-primary btn-sm mt-3"
-                    disabled={starting}
-                  >
-                    {starting ? "Starting camera…" : "Turn on camera"}
-                  </button>
-                )}
+                  {stream && (
+                    <div className="mt-3 max-w-[240px]">
+                      {camera}
+                      <div
+                        className={`mt-2 rounded-md border px-3 py-1.5 text-[12.5px] text-center ${toneClass}`}
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {faceMessage.text}
+                      </div>
+                    </div>
+                  )}
+
+                  {!stream && (
+                    <button
+                      onClick={() => void enableCamera()}
+                      className="btn-primary btn-sm mt-3"
+                      disabled={starting}
+                    >
+                      {starting ? "Starting camera…" : "Turn on camera"}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <label
             htmlFor="agree"
-            className={`mt-3 flex items-start gap-3 rounded-xl border px-4 py-3.5 cursor-pointer transition ${
+            className={`${cameraOn ? "mt-3 " : ""}flex items-start gap-3 rounded-xl border px-4 py-3.5 cursor-pointer transition ${
               agreed
                 ? "border-emerald-200 bg-emerald-50/60"
                 : "border-line bg-canvas hover:border-brand-300"
@@ -645,7 +663,7 @@ export function ExamRunner({
           >
             {starting
               ? "Starting…"
-              : !stream
+              : cameraOn && !stream
                 ? "Turn on your camera first"
                 : !cameraChecked
                   ? "Waiting for your face…"
@@ -713,141 +731,142 @@ export function ExamRunner({
 
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-6 grid lg:grid-cols-[1fr_220px] gap-6 items-start">
-        {/* Question */}
-        <div className="card p-5 sm:p-7 min-w-0">
-          {question ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2 mb-4">
-                <span className="chip bg-brand-100 text-brand-800">
-                  {question.sectionName}
-                </span>
-                <span className="chip bg-canvas text-ink-3 border border-line-2">
-                  {question.marks} mark{question.marks === 1 ? "" : "s"}
-                </span>
-                {question.type === "mcq_multiple" && (
-                  <span className="chip bg-amber-100 text-amber-800">
-                    Select all that apply
+          {/* Question */}
+          <div className="card p-5 sm:p-7 min-w-0">
+            {question ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  <span className="chip bg-brand-100 text-brand-800">
+                    {question.sectionName}
                   </span>
-                )}
-              </div>
+                  <span className="chip bg-canvas text-ink-3 border border-line-2">
+                    {question.marks} mark{question.marks === 1 ? "" : "s"}
+                  </span>
+                  {question.type === "mcq_multiple" && (
+                    <span className="chip bg-amber-100 text-amber-800">
+                      Select all that apply
+                    </span>
+                  )}
+                </div>
 
-              <h2 className="text-[17px] sm:text-[19px] font-semibold leading-relaxed mb-6 whitespace-pre-wrap">
-                <span className="text-ink-3 mr-2 tabular-nums">
-                  {current + 1}.
-                </span>
-                {question.body}
-              </h2>
+                <h2 className="text-[17px] sm:text-[19px] font-semibold leading-relaxed mb-6 whitespace-pre-wrap">
+                  <span className="text-ink-3 mr-2 tabular-nums">
+                    {current + 1}.
+                  </span>
+                  {question.body}
+                </h2>
 
-              {question.type === "fill_blank" ? (
-                <input
-                  className="input max-w-md"
-                  placeholder="Type your answer"
-                  value={answers[question.id]?.textAnswer ?? ""}
-                  onChange={(e) => setText(e.target.value)}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
-              ) : (
-                <div className="space-y-2.5">
-                  {question.options.map((opt, i) => {
-                    const selected =
-                      answers[question.id]?.selectedOptionIds.includes(opt.id) ??
-                      false;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setChoice(opt.id)}
-                        className={`w-full flex items-start gap-3 rounded-lg border px-4 py-3.5 text-left transition ${
-                          selected
-                            ? "border-brand-500 bg-brand-50 ring-2 ring-brand-200"
-                            : "border-line hover:border-brand-300 hover:bg-brand-50/40"
-                        }`}
-                      >
-                        <span
-                          className={`grid h-6 w-6 shrink-0 place-items-center text-[12px] font-bold ${
-                            question.type === "mcq_multiple"
-                              ? "rounded-md"
-                              : "rounded-full"
-                          } ${
+                {question.type === "fill_blank" ? (
+                  <input
+                    className="input max-w-md"
+                    placeholder="Type your answer"
+                    value={answers[question.id]?.textAnswer ?? ""}
+                    onChange={(e) => setText(e.target.value)}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                ) : (
+                  <div className="space-y-2.5">
+                    {question.options.map((opt, i) => {
+                      const selected =
+                        answers[question.id]?.selectedOptionIds.includes(
+                          opt.id,
+                        ) ?? false;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => setChoice(opt.id)}
+                          className={`w-full flex items-start gap-3 rounded-lg border px-4 py-3.5 text-left transition ${
                             selected
-                              ? "bg-brand-500 text-ink"
-                              : "bg-canvas text-ink-3 border border-line-2"
+                              ? "border-brand-500 bg-brand-50 ring-2 ring-brand-200"
+                              : "border-line hover:border-brand-300 hover:bg-brand-50/40"
                           }`}
                         >
-                          {String.fromCharCode(65 + i)}
-                        </span>
-                        <span className="text-[15px] leading-relaxed min-w-0">
-                          {opt.body}
-                        </span>
-                      </button>
-                    );
-                  })}
+                          <span
+                            className={`grid h-6 w-6 shrink-0 place-items-center text-[12px] font-bold ${
+                              question.type === "mcq_multiple"
+                                ? "rounded-md"
+                                : "rounded-full"
+                            } ${
+                              selected
+                                ? "bg-brand-500 text-ink"
+                                : "bg-canvas text-ink-3 border border-line-2"
+                            }`}
+                          >
+                            {String.fromCharCode(65 + i)}
+                          </span>
+                          <span className="text-[15px] leading-relaxed min-w-0">
+                            {opt.body}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 mt-8 pt-5 border-t border-line">
+                  <button
+                    onClick={() => setCurrent((i) => Math.max(0, i - 1))}
+                    className="btn-ghost"
+                    disabled={current === 0}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    onClick={() =>
+                      setCurrent((i) => Math.min(total - 1, i + 1))
+                    }
+                    className="btn-primary"
+                    disabled={current === total - 1}
+                  >
+                    Next
+                  </button>
                 </div>
-              )}
+              </>
+            ) : (
+              <p className="text-ink-2">This test has no questions.</p>
+            )}
+          </div>
 
-              <div className="flex items-center justify-between gap-3 mt-8 pt-5 border-t border-line">
-                <button
-                  onClick={() => setCurrent((i) => Math.max(0, i - 1))}
-                  className="btn-ghost"
-                  disabled={current === 0}
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() =>
-                    setCurrent((i) => Math.min(total - 1, i + 1))
-                  }
-                  className="btn-primary"
-                  disabled={current === total - 1}
-                >
-                  Next
-                </button>
+          {/* Question palette */}
+          <aside className="card p-4 lg:sticky lg:top-20">
+            <h3 className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-3 mb-3">
+              Questions
+            </h3>
+            <div className="grid grid-cols-6 lg:grid-cols-5 gap-1.5">
+              {paper.questions.map((q, i) => {
+                const answered = isAnswered(q.id);
+                const active = i === current;
+                return (
+                  <button
+                    key={q.id}
+                    onClick={() => setCurrent(i)}
+                    aria-label={`Question ${i + 1}${answered ? ", answered" : ""}`}
+                    className={`h-8 rounded-md text-[12.5px] font-bold tabular-nums transition ${
+                      active
+                        ? "bg-ink text-white"
+                        : answered
+                          ? "bg-brand-400 text-ink"
+                          : "bg-canvas text-ink-3 border border-line hover:border-brand-300"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-4 pt-3 border-t border-line space-y-1.5 text-[12px] text-ink-2">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded bg-brand-400" /> Answered
               </div>
-            </>
-          ) : (
-            <p className="text-ink-2">This test has no questions.</p>
-          )}
-        </div>
-
-        {/* Question palette */}
-        <aside className="card p-4 lg:sticky lg:top-20">
-          <h3 className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-3 mb-3">
-            Questions
-          </h3>
-          <div className="grid grid-cols-6 lg:grid-cols-5 gap-1.5">
-            {paper.questions.map((q, i) => {
-              const answered = isAnswered(q.id);
-              const active = i === current;
-              return (
-                <button
-                  key={q.id}
-                  onClick={() => setCurrent(i)}
-                  aria-label={`Question ${i + 1}${answered ? ", answered" : ""}`}
-                  className={`h-8 rounded-md text-[12.5px] font-bold tabular-nums transition ${
-                    active
-                      ? "bg-ink text-white"
-                      : answered
-                        ? "bg-brand-400 text-ink"
-                        : "bg-canvas text-ink-3 border border-line hover:border-brand-300"
-                  }`}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-4 pt-3 border-t border-line space-y-1.5 text-[12px] text-ink-2">
-            <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded bg-brand-400" /> Answered
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded bg-canvas border border-line" />{" "}
+                Not answered
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="h-3 w-3 rounded bg-canvas border border-line" />{" "}
-              Not answered
-            </div>
-          </div>
-        </aside>
+          </aside>
         </div>
       </div>
 

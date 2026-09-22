@@ -16,6 +16,7 @@ import {
 import { requireStudent } from "@/lib/session";
 import { randomSeed, seededShuffle, deriveSeed } from "@/lib/shuffle";
 import { gradeAttempt, type GradableQuestion } from "@/lib/grading";
+import { attemptsLeft } from "@/lib/attempts";
 
 /** A question as the student sees it. Correct answers are never included. */
 export interface StudentQuestion {
@@ -33,6 +34,11 @@ export interface ExamPaper {
   testTitle: string;
   instructions: string | null;
   maxWarnings: number;
+  /** Which sitting this is, and how many the test allows. */
+  attemptNumber: number;
+  maxAttempts: number;
+  /** Whether the webcam must be on and watched for this test. */
+  cameraRequired: boolean;
   warningCount: number;
   /** Milliseconds left, computed from the server clock. */
   remainingMs: number;
@@ -79,27 +85,59 @@ export async function startAttempt(testId: string): Promise<ExamPaper> {
   if (!test) throw new Error("NOT_FOUND");
   if (test.status !== "published") throw new Error("NOT_OPEN");
 
-  let [attempt] = await db
+  const mine = await db
     .select()
     .from(attempts)
-    .where(and(eq(attempts.testId, testId), eq(attempts.userId, session.userId)))
-    .limit(1);
+    .where(
+      and(eq(attempts.testId, testId), eq(attempts.userId, session.userId)),
+    )
+    .orderBy(asc(attempts.attemptNumber));
+
+  // An unfinished attempt is always resumed, never replaced, so reloading or
+  // losing power cannot be used to get a fresh paper or a fresh clock.
+  let attempt = mine.find((a) => a.status === "in_progress");
 
   if (!attempt) {
+    if (attemptsLeft(test.maxAttempts, mine.length) === 0) {
+      throw new Error("ALREADY_SUBMITTED");
+    }
+
+    // Each attempt gets its own seed, so a retake is a freshly shuffled paper.
     const deadline = new Date(Date.now() + test.durationMinutes * 60_000);
-    const created = await db
+    const [created] = await db
       .insert(attempts)
       .values({
         testId,
         userId: session.userId,
+        attemptNumber: mine.length + 1,
         seed: randomSeed(),
         deadlineAt: deadline,
       })
+      // Two tabs starting at once race for the same number; the loser picks
+      // up the winner's row below instead of opening a second attempt.
+      .onConflictDoNothing()
       .returning();
-    attempt = created[0];
-  }
 
-  if (attempt.status !== "in_progress") throw new Error("ALREADY_SUBMITTED");
+    attempt =
+      created ??
+      (
+        await db
+          .select()
+          .from(attempts)
+          .where(
+            and(
+              eq(attempts.testId, testId),
+              eq(attempts.userId, session.userId),
+              eq(attempts.attemptNumber, mine.length + 1),
+            ),
+          )
+          .limit(1)
+      )[0];
+
+    if (!attempt || attempt.status !== "in_progress") {
+      throw new Error("ALREADY_SUBMITTED");
+    }
+  }
 
   const sectionRows = await db
     .select()
@@ -191,6 +229,9 @@ export async function startAttempt(testId: string): Promise<ExamPaper> {
     testTitle: test.title,
     instructions: test.instructions,
     maxWarnings: test.maxWarnings,
+    attemptNumber: attempt.attemptNumber,
+    maxAttempts: test.maxAttempts,
+    cameraRequired: test.cameraRequired,
     warningCount: attempt.warningCount,
     remainingMs: Math.max(0, attempt.deadlineAt.getTime() - Date.now()),
     questions: paper,
@@ -241,6 +282,13 @@ export async function saveAnswer(
   return { ok: true };
 }
 
+const CAMERA_VIOLATIONS = new Set([
+  "no_face",
+  "multiple_faces",
+  "looking_away",
+  "camera_off",
+]);
+
 /**
  * Records a lockdown violation and returns the running count. The server
  * decides when the limit is reached, so disconnecting cannot dodge it.
@@ -263,12 +311,25 @@ export async function recordViolation(
   }
 
   const [test] = await db
-    .select({ maxWarnings: tests.maxWarnings })
+    .select({
+      maxWarnings: tests.maxWarnings,
+      cameraRequired: tests.cameraRequired,
+    })
     .from(tests)
     .where(eq(tests.id, attempt.testId))
     .limit(1);
 
   const maxWarnings = test?.maxWarnings ?? 3;
+
+  // A test with the camera off never counts a camera warning, whatever the
+  // browser sends.
+  if (test && !test.cameraRequired && CAMERA_VIOLATIONS.has(type)) {
+    return {
+      warningCount: attempt.warningCount,
+      terminated: false,
+      maxWarnings,
+    };
+  }
   const next = attempt.warningCount + 1;
 
   await db.insert(violations).values({

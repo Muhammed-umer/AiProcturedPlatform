@@ -166,7 +166,11 @@ export default async function StudentResultPage({
 
       <PageHeader
         title={test?.title ?? "Result"}
-        subtitle="Your submission has been recorded."
+        subtitle={
+          (test?.maxAttempts ?? 1) > 1
+            ? `Attempt ${attempt.attemptNumber} of ${test?.maxAttempts}. Your submission has been recorded.`
+            : "Your submission has been recorded."
+        }
         action={
           <Link href="/student" className="btn-ghost">
             Back to my tests

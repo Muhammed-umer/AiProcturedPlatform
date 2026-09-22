@@ -19,6 +19,7 @@ import { requireAdmin } from "@/lib/session";
 import { hashPassword, generateDefaultPassword } from "@/lib/password";
 import { parseStudentRows, parseQuestionRows } from "@/lib/excel-parse";
 import { readSheetRows } from "@/lib/excel-read";
+import { clampMaxAttempts } from "@/lib/attempts";
 
 export interface AdminState {
   error?: string;
@@ -47,7 +48,8 @@ export async function createGroup(
     .where(eq(groups.name, name))
     .limit(1);
 
-  if (existing.length > 0) return { error: `A group called "${name}" already exists` };
+  if (existing.length > 0)
+    return { error: `A group called "${name}" already exists` };
 
   await db.insert(groups).values({ name, description: description || null });
   revalidatePath("/admin/groups");
@@ -109,14 +111,17 @@ export async function importStudents(
   try {
     rows = await readSheetRows(await file.arrayBuffer());
   } catch {
-    return { error: "That file could not be read. Upload a .xlsx or .csv file." };
+    return {
+      error: "That file could not be read. Upload a .xlsx or .csv file.",
+    };
   }
 
   const parsed = parseStudentRows(rows);
 
   if (parsed.valid.length === 0) {
     return {
-      error: "No usable rows found. Expected columns: Roll Number, Name, Email.",
+      error:
+        "No usable rows found. Expected columns: Roll Number, Name, Email.",
       issues: parsed.issues,
     };
   }
@@ -171,7 +176,9 @@ export async function importStudents(
   return {
     success:
       `${credentials.length} new account${credentials.length === 1 ? "" : "s"} created` +
-      (reused > 0 ? `, ${reused} existing student${reused === 1 ? "" : "s"} added to the group` : ""),
+      (reused > 0
+        ? `, ${reused} existing student${reused === 1 ? "" : "s"} added to the group`
+        : ""),
     credentials,
     issues: parsed.issues,
   };
@@ -248,6 +255,10 @@ export async function createTest(
       instructions: instructions || null,
       durationMinutes: Math.floor(duration),
       maxWarnings: Math.max(1, Math.floor(maxWarnings)),
+      maxAttempts: clampMaxAttempts(formData.get("maxAttempts") ?? 1),
+      shuffleQuestions: formData.get("shuffleQuestions") === "on",
+      shuffleOptions: formData.get("shuffleOptions") === "on",
+      cameraRequired: formData.get("cameraRequired") === "on",
       createdBy: session.userId,
     })
     .returning({ id: tests.id });
@@ -290,9 +301,7 @@ export async function setTestStatus(formData: FormData): Promise<void> {
   await requireAdmin();
   const testId = String(formData.get("testId") ?? "");
   const status = String(formData.get("status") ?? "draft") as
-    | "draft"
-    | "published"
-    | "closed";
+    "draft" | "published" | "closed";
 
   await db
     .update(tests)
@@ -324,6 +333,34 @@ export async function updateTestVisibility(
     .where(eq(tests.id, testId));
 
   revalidatePath(`/admin/tests/${testId}`);
+  return { success: "Saved" };
+}
+
+/**
+ * Saves how the test is sat: attempts allowed, shuffling and the camera.
+ * A paper already open keeps its attempt; the rest applies from the next
+ * start or reload.
+ */
+export async function updateTestSettings(
+  _prev: AdminState,
+  formData: FormData,
+): Promise<AdminState> {
+  await requireAdmin();
+  const testId = String(formData.get("testId") ?? "");
+  if (!testId) return { error: "Missing test" };
+
+  await db
+    .update(tests)
+    .set({
+      maxAttempts: clampMaxAttempts(formData.get("maxAttempts") ?? 1),
+      shuffleQuestions: formData.get("shuffleQuestions") === "on",
+      shuffleOptions: formData.get("shuffleOptions") === "on",
+      cameraRequired: formData.get("cameraRequired") === "on",
+    })
+    .where(eq(tests.id, testId));
+
+  revalidatePath(`/admin/tests/${testId}`);
+  revalidatePath(`/admin/monitor/${testId}`);
   return { success: "Saved" };
 }
 
@@ -405,9 +442,7 @@ export async function addQuestion(
   const testId = String(formData.get("testId") ?? "");
   const sectionId = String(formData.get("sectionId") ?? "");
   const type = String(formData.get("type") ?? "mcq_single") as
-    | "mcq_single"
-    | "mcq_multiple"
-    | "fill_blank";
+    "mcq_single" | "mcq_multiple" | "fill_blank";
   const body = String(formData.get("body") ?? "").trim();
   const marksRaw = String(formData.get("marksOverride") ?? "").trim();
 
@@ -461,10 +496,14 @@ export async function addQuestion(
   if (optionBodies.length < 2) return { error: "Enter at least two options" };
   if (correctIdx.length === 0) return { error: "Mark which option is correct" };
   if (type === "mcq_single" && correctIdx.length !== 1) {
-    return { error: "A single answer question needs exactly one correct option" };
+    return {
+      error: "A single answer question needs exactly one correct option",
+    };
   }
   if (type === "mcq_multiple" && correctIdx.length < 2) {
-    return { error: "A multiple answer question needs at least two correct options" };
+    return {
+      error: "A multiple answer question needs at least two correct options",
+    };
   }
   if (correctIdx.some((i) => i >= optionBodies.length)) {
     return { error: "A correct answer was marked on an empty option" };
@@ -503,7 +542,8 @@ export async function deleteQuestion(formData: FormData): Promise<void> {
   await requireAdmin();
   const questionId = String(formData.get("questionId") ?? "");
   const testId = String(formData.get("testId") ?? "");
-  if (questionId) await db.delete(questions).where(eq(questions.id, questionId));
+  if (questionId)
+    await db.delete(questions).where(eq(questions.id, questionId));
   revalidatePath(`/admin/tests/${testId}`);
 }
 
@@ -526,7 +566,9 @@ export async function importQuestions(
   try {
     rows = await readSheetRows(await file.arrayBuffer());
   } catch {
-    return { error: "That file could not be read. Upload a .xlsx or .csv file." };
+    return {
+      error: "That file could not be read. Upload a .xlsx or .csv file.",
+    };
   }
 
   const parsed = parseQuestionRows(rows);

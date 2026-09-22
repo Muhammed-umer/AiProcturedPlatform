@@ -11,6 +11,7 @@ import {
   answers,
   options,
 } from "@/db/schema";
+import { bestAttemptPerStudent } from "@/lib/attempts";
 import {
   summarize,
   sectionAverages,
@@ -39,10 +40,11 @@ export default async function TestAnalysisPage({
   const [test] = await db.select().from(tests).where(eq(tests.id, id)).limit(1);
   if (!test) notFound();
 
-  const attemptRows = await db
+  const allAttempts = await db
     .select({
       id: attempts.id,
       userId: attempts.userId,
+      attemptNumber: attempts.attemptNumber,
       status: attempts.status,
       totalScore: attempts.totalScore,
       maxScore: attempts.maxScore,
@@ -53,6 +55,9 @@ export default async function TestAnalysisPage({
     .from(attempts)
     .innerJoin(users, eq(users.id, attempts.userId))
     .where(and(eq(attempts.testId, id), ne(attempts.status, "in_progress")));
+
+  // A test may allow retakes; each student is ranked on their best one.
+  const attemptRows = bestAttemptPerStudent(allAttempts);
 
   if (attemptRows.length === 0) {
     return (
@@ -85,6 +90,11 @@ export default async function TestAnalysisPage({
   const warningsByUser = new Map(
     attemptRows.map((a) => [a.userId, a.warningCount]),
   );
+  const attemptsByUser = new Map<string, number>();
+  for (const a of allAttempts) {
+    attemptsByUser.set(a.userId, (attemptsByUser.get(a.userId) ?? 0) + 1);
+  }
+  const showAttempts = test.maxAttempts > 1;
 
   /* ------------------------------------------------- section & item -- */
 
@@ -216,8 +226,9 @@ export default async function TestAnalysisPage({
             </div>
             <div className="text-[13.5px] text-emerald-800 tabular-nums mt-0.5">
               {summary.topPerformer.rollNumber} &middot;{" "}
-              {summary.topPerformer.totalScore} / {summary.topPerformer.maxScore}{" "}
-              ({summary.topPerformer.percentage}%)
+              {summary.topPerformer.totalScore} /{" "}
+              {summary.topPerformer.maxScore} ({summary.topPerformer.percentage}
+              %)
             </div>
           </div>
         )}
@@ -299,13 +310,17 @@ export default async function TestAnalysisPage({
                 <th className="th">Score</th>
                 <th className="th">Percentage</th>
                 <th className="th">Warnings</th>
+                {showAttempts && <th className="th">Attempts</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {summary.ranked.map((r) => {
                 const warnings = warningsByUser.get(r.userId) ?? 0;
                 return (
-                  <tr key={r.userId} className="hover:bg-brand-50/40 transition">
+                  <tr
+                    key={r.userId}
+                    className="hover:bg-brand-50/40 transition"
+                  >
                     <td className="td font-bold text-ink tabular-nums">
                       {r.rank}
                     </td>
@@ -322,6 +337,12 @@ export default async function TestAnalysisPage({
                         <span className="text-ink-3">&mdash;</span>
                       )}
                     </td>
+                    {showAttempts && (
+                      <td className="td tabular-nums">
+                        {attemptsByUser.get(r.userId) ?? 1} of{" "}
+                        {test.maxAttempts}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

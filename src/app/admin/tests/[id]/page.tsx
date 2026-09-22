@@ -19,6 +19,7 @@ import { QuestionList } from "./question-list";
 import { QuestionImport } from "./question-import";
 import { DocumentImport } from "./document-import";
 import { VisibilitySettings } from "./visibility-settings";
+import { TestSettings } from "./test-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -197,6 +198,13 @@ export default async function TestBuilderPage({
             allGroups={allGroups}
             assignedIds={assignedIds}
             published={test.status === "published"}
+          />
+          <TestSettings
+            testId={test.id}
+            maxAttempts={test.maxAttempts}
+            shuffleQuestions={test.shuffleQuestions}
+            shuffleOptions={test.shuffleOptions}
+            cameraRequired={test.cameraRequired}
           />
           <VisibilitySettings
             testId={test.id}
