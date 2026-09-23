@@ -6,7 +6,6 @@ import { Alert, Logo } from "@/components/ui";
 
 const QUESTIONS = [
   "What was the name of your first school?",
-  "What is your date of birth in DD-MM-YYYY?",
   "What is the name of your home town?",
   "What was your childhood nickname?",
 ];

@@ -10,7 +10,7 @@ import { type Page } from "@playwright/test";
  * with the password the change set.
  */
 
-export const SEED_PASSWORD = "Admin@123";
+export const SEED_PASSWORD = "admin";
 export const ADMIN_PASSWORD = "AdminE2E@2026";
 export const SECURITY_ANSWER = "bluejay";
 

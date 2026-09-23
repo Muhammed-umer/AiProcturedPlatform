@@ -98,21 +98,22 @@ describe("checkPasswordStrength", () => {
 });
 
 describe("generateDefaultPassword", () => {
-  it("builds a readable password from the roll number", () => {
-    expect(generateDefaultPassword("21CS045")).toBe("Test@S045");
+  it("is random, not derived from anything guessable", () => {
+    const seen = new Set(Array.from({ length: 50 }, generateDefaultPassword));
+    expect(seen.size).toBe(50);
   });
 
-  it("strips punctuation from the roll number", () => {
-    expect(generateDefaultPassword("21-CS-0 88")).toBe("Test@S088");
+  it("has the printable LLLL-DDDD shape without look-alike characters", () => {
+    for (let i = 0; i < 200; i++) {
+      expect(generateDefaultPassword()).toMatch(
+        /^[A-HJKMNP-Z]{4}-[2-9]{4}$/,
+      );
+    }
   });
 
-  it("falls back when the roll number has no usable characters", () => {
-    expect(generateDefaultPassword("///")).toBe("Test@1234");
-  });
-
-  it("always produces a password that passes the strength rules", () => {
-    for (const roll of ["21CS001", "A1", "9999", "EC-2022-17"]) {
-      expect(checkPasswordStrength(generateDefaultPassword(roll)).ok).toBe(true);
+  it("always passes the strength rules", () => {
+    for (let i = 0; i < 200; i++) {
+      expect(checkPasswordStrength(generateDefaultPassword()).ok).toBe(true);
     }
   });
 });

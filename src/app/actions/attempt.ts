@@ -1,12 +1,9 @@
 "use server";
 
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { eq, and, asc, sql, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   tests,
-  sections,
-  questions,
-  options,
   attempts,
   answers,
   violations,
@@ -14,25 +11,30 @@ import {
   testGroups,
 } from "@/db/schema";
 import { requireStudent } from "@/lib/session";
-import { randomSeed, seededShuffle, deriveSeed } from "@/lib/shuffle";
-import { gradeAttempt, type GradableQuestion } from "@/lib/grading";
+import { randomSeed } from "@/lib/shuffle";
 import { attemptsLeft } from "@/lib/attempts";
+import { CAMERA_VIOLATIONS } from "@/lib/violation-labels";
+import {
+  loadTestContent,
+  buildPaper,
+  cleanAnswer,
+  finalizeAttempt,
+  type StudentQuestion,
+} from "@/lib/exam-core";
 
-/** A question as the student sees it. Correct answers are never included. */
-export interface StudentQuestion {
-  id: string;
-  sectionId: string;
-  sectionName: string;
-  type: "mcq_single" | "mcq_multiple" | "fill_blank";
-  body: string;
-  marks: number;
-  options: { id: string; body: string }[];
-}
+export type { StudentQuestion } from "@/lib/exam-core";
+
+type SavedAnswers = Record<
+  string,
+  { selectedOptionIds: string[]; textAnswer: string }
+>;
 
 export interface ExamPaper {
   attemptId: string;
   testTitle: string;
   instructions: string | null;
+  durationMinutes: number;
+  questionCount: number;
   maxWarnings: number;
   /** Which sitting this is, and how many the test allows. */
   attemptNumber: number;
@@ -40,14 +42,45 @@ export interface ExamPaper {
   /** Whether the webcam must be on and watched for this test. */
   cameraRequired: boolean;
   warningCount: number;
+  /**
+   * False until the student presses Continue on the instructions screen.
+   * Until then the clock has not started and `questions` is empty: the paper
+   * is only sent once the sitting has really begun.
+   */
+  begun: boolean;
   /** Milliseconds left, computed from the server clock. */
   remainingMs: number;
   questions: StudentQuestion[];
-  savedAnswers: Record<
-    string,
-    { selectedOptionIds: string[]; textAnswer: string }
-  >;
+  savedAnswers: SavedAnswers;
 }
+
+/** What Continue hands back: the paper itself and the real clock. */
+export interface BegunPaper {
+  remainingMs: number;
+  questions: StudentQuestion[];
+  savedAnswers: SavedAnswers;
+}
+
+/**
+ * How long a student may sit on the instructions screen before the clock
+ * starts anyway. Long enough for a slow camera or a restart of the browser,
+ * short enough that an unopened attempt cannot be held for days.
+ */
+const INSTRUCTIONS_GRACE_MS = 30 * 60_000;
+
+/** The violations the exam page can raise. Anything else is refused. */
+const VIOLATION_TYPES = new Set([
+  "tab_switch",
+  "window_blur",
+  "fullscreen_exit",
+  "copy_paste",
+  "devtools",
+  "print_screen",
+  "no_face",
+  "multiple_faces",
+  "looking_away",
+  "camera_off",
+]);
 
 /** Confirms this student is in a group the test is published to. */
 async function assertEligible(userId: string, testId: string) {
@@ -67,13 +100,40 @@ async function assertEligible(userId: string, testId: string) {
   if (rows.length === 0) throw new Error("NOT_ELIGIBLE");
 }
 
+/** The student's own attempt, or nothing. Every action checks through here. */
+async function ownAttempt(attemptId: unknown, userId: string) {
+  if (typeof attemptId !== "string") return null;
+  const [attempt] = await db
+    .select()
+    .from(attempts)
+    .where(and(eq(attempts.id, attemptId), eq(attempts.userId, userId)))
+    .limit(1);
+  return attempt ?? null;
+}
+
+async function savedAnswersFor(attemptId: string): Promise<SavedAnswers> {
+  const saved = await db
+    .select()
+    .from(answers)
+    .where(eq(answers.attemptId, attemptId));
+  const out: SavedAnswers = {};
+  for (const a of saved) {
+    out[a.questionId] = {
+      selectedOptionIds: a.selectedOptionIds ?? [],
+      textAnswer: a.textAnswer ?? "",
+    };
+  }
+  return out;
+}
+
 /**
- * Starts an attempt, or resumes an existing one. The deadline is fixed on the
- * server the first time and never recomputed, so reloading the page or losing
- * power does not hand the student extra time.
+ * Opens the instructions screen for a test: creates the attempt, or resumes
+ * the unfinished one. The paper itself is only included once the attempt has
+ * begun; see beginAttempt.
  */
 export async function startAttempt(testId: string): Promise<ExamPaper> {
   const session = await requireStudent();
+  if (typeof testId !== "string") throw new Error("NOT_FOUND");
   await assertEligible(session.userId, testId);
 
   const [test] = await db
@@ -102,14 +162,19 @@ export async function startAttempt(testId: string): Promise<ExamPaper> {
       throw new Error("ALREADY_SUBMITTED");
     }
 
-    // Each attempt gets its own seed, so a retake is a freshly shuffled paper.
-    const deadline = new Date(Date.now() + test.durationMinutes * 60_000);
+    // A provisional deadline. Pressing Continue replaces it with the real
+    // one; if the student never does, the attempt still closes by itself.
+    const deadline = new Date(
+      Date.now() + INSTRUCTIONS_GRACE_MS + test.durationMinutes * 60_000,
+    );
     const [created] = await db
       .insert(attempts)
       .values({
         testId,
         userId: session.userId,
         attemptNumber: mine.length + 1,
+        // Each attempt gets its own seed, so a retake is a freshly
+        // shuffled paper.
         seed: randomSeed(),
         deadlineAt: deadline,
       })
@@ -139,103 +204,79 @@ export async function startAttempt(testId: string): Promise<ExamPaper> {
     }
   }
 
-  const sectionRows = await db
-    .select()
-    .from(sections)
-    .where(eq(sections.testId, testId))
-    .orderBy(asc(sections.ordinal));
-
-  const sectionIds = sectionRows.map((s) => s.id);
-  const questionRows =
-    sectionIds.length > 0
-      ? await db
-          .select()
-          .from(questions)
-          .where(inArray(questions.sectionId, sectionIds))
-          .orderBy(asc(questions.ordinal))
-      : [];
-
-  const optionRows =
-    questionRows.length > 0
-      ? await db
-          .select({
-            id: options.id,
-            questionId: options.questionId,
-            body: options.body,
-            ordinal: options.ordinal,
-          })
-          .from(options)
-          .where(
-            inArray(
-              options.questionId,
-              questionRows.map((q) => q.id),
-            ),
-          )
-          .orderBy(asc(options.ordinal))
-      : [];
-
-  // Build the paper in section order, shuffling within each section.
-  const paper: StudentQuestion[] = [];
-
-  for (const section of sectionRows) {
-    let inSection = questionRows.filter((q) => q.sectionId === section.id);
-
-    if (test.shuffleQuestions) {
-      inSection = seededShuffle(
-        inSection,
-        deriveSeed(attempt.seed, `q:${section.id}`),
-      );
-    }
-
-    for (const q of inSection) {
-      let opts = optionRows
-        .filter((o) => o.questionId === q.id)
-        .map((o) => ({ id: o.id, body: o.body }));
-
-      if (test.shuffleOptions && opts.length > 0) {
-        opts = seededShuffle(opts, deriveSeed(attempt.seed, `o:${q.id}`));
-      }
-
-      paper.push({
-        id: q.id,
-        sectionId: section.id,
-        sectionName: section.name,
-        type: q.type,
-        body: q.body,
-        marks:
-          q.marksOverride !== null
-            ? Number(q.marksOverride)
-            : Number(section.defaultMarks),
-        options: opts,
-      });
-    }
-  }
-
-  const saved = await db
-    .select()
-    .from(answers)
-    .where(eq(answers.attemptId, attempt.id));
-
-  const savedAnswers: ExamPaper["savedAnswers"] = {};
-  for (const a of saved) {
-    savedAnswers[a.questionId] = {
-      selectedOptionIds: a.selectedOptionIds ?? [],
-      textAnswer: a.textAnswer ?? "",
-    };
-  }
+  const content = await loadTestContent(testId);
+  const begun = attempt.begunAt !== null;
 
   return {
     attemptId: attempt.id,
     testTitle: test.title,
     instructions: test.instructions,
+    durationMinutes: test.durationMinutes,
+    questionCount: content.questions.length,
     maxWarnings: test.maxWarnings,
     attemptNumber: attempt.attemptNumber,
     maxAttempts: test.maxAttempts,
     cameraRequired: test.cameraRequired,
     warningCount: attempt.warningCount,
-    remainingMs: Math.max(0, attempt.deadlineAt.getTime() - Date.now()),
-    questions: paper,
-    savedAnswers,
+    begun,
+    remainingMs: begun
+      ? Math.max(0, attempt.deadlineAt.getTime() - Date.now())
+      : test.durationMinutes * 60_000,
+    questions: begun
+      ? buildPaper(content, attempt.seed, {
+          questions: test.shuffleQuestions,
+          options: test.shuffleOptions,
+        })
+      : [],
+    savedAnswers: begun ? await savedAnswersFor(attempt.id) : {},
+  };
+}
+
+/**
+ * The student pressed Continue. Starts the real clock (once; later calls,
+ * from a reload or a second tab, keep the first start) and hands over the
+ * paper.
+ */
+export async function beginAttempt(
+  attemptId: string,
+): Promise<BegunPaper | { error: string }> {
+  const session = await requireStudent();
+  const attempt = await ownAttempt(attemptId, session.userId);
+  if (!attempt || attempt.status !== "in_progress") {
+    return { error: "This attempt is no longer open." };
+  }
+
+  const [test] = await db
+    .select()
+    .from(tests)
+    .where(eq(tests.id, attempt.testId))
+    .limit(1);
+  if (!test) return { error: "This test no longer exists." };
+
+  // The deadline is the start plus the duration, but never later than the
+  // provisional one: waiting on the instructions screen buys no extra time.
+  await db
+    .update(attempts)
+    .set({
+      begunAt: new Date(),
+      deadlineAt: sql`least(${attempts.deadlineAt}, now() + make_interval(mins => ${test.durationMinutes}))`,
+    })
+    .where(and(eq(attempts.id, attempt.id), isNull(attempts.begunAt)));
+
+  const [current] = await db
+    .select({ deadlineAt: attempts.deadlineAt, seed: attempts.seed })
+    .from(attempts)
+    .where(eq(attempts.id, attempt.id))
+    .limit(1);
+
+  const content = await loadTestContent(test.id);
+  return {
+    remainingMs: Math.max(0, current.deadlineAt.getTime() - Date.now()),
+    questions: buildPaper(content, current.seed, {
+      questions: test.shuffleQuestions,
+      options: test.shuffleOptions,
+    }),
+    savedAnswers: await savedAnswersFor(attempt.id),
   };
 }
 
@@ -246,48 +287,44 @@ export async function saveAnswer(
   value: { selectedOptionIds?: string[]; textAnswer?: string },
 ): Promise<{ ok: boolean; expired?: boolean }> {
   const session = await requireStudent();
+  const attempt = await ownAttempt(attemptId, session.userId);
 
-  const [attempt] = await db
-    .select()
-    .from(attempts)
-    .where(and(eq(attempts.id, attemptId), eq(attempts.userId, session.userId)))
-    .limit(1);
-
-  if (!attempt || attempt.status !== "in_progress") return { ok: false };
+  if (!attempt || attempt.status !== "in_progress" || !attempt.begunAt) {
+    return { ok: false };
+  }
 
   // The server clock decides, not the browser.
   if (attempt.deadlineAt.getTime() <= Date.now()) {
-    await submitAttempt(attemptId, "auto_submitted");
+    await finalizeAttempt(attempt.id, "auto_submitted");
     return { ok: false, expired: true };
   }
+
+  // Only an answer to a question on this test, using that question's own
+  // options, is stored.
+  const content = await loadTestContent(attempt.testId);
+  const clean = cleanAnswer(content, questionId, value);
+  if (!clean) return { ok: false };
 
   await db
     .insert(answers)
     .values({
-      attemptId,
+      attemptId: attempt.id,
       questionId,
-      selectedOptionIds: value.selectedOptionIds ?? null,
-      textAnswer: value.textAnswer ?? null,
+      selectedOptionIds: clean.selectedOptionIds,
+      textAnswer: clean.textAnswer,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: [answers.attemptId, answers.questionId],
       set: {
-        selectedOptionIds: value.selectedOptionIds ?? null,
-        textAnswer: value.textAnswer ?? null,
+        selectedOptionIds: clean.selectedOptionIds,
+        textAnswer: clean.textAnswer,
         updatedAt: new Date(),
       },
     });
 
   return { ok: true };
 }
-
-const CAMERA_VIOLATIONS = new Set([
-  "no_face",
-  "multiple_faces",
-  "looking_away",
-  "camera_off",
-]);
 
 /**
  * Records a lockdown violation and returns the running count. The server
@@ -299,12 +336,7 @@ export async function recordViolation(
   detail?: string,
 ): Promise<{ warningCount: number; terminated: boolean; maxWarnings: number }> {
   const session = await requireStudent();
-
-  const [attempt] = await db
-    .select()
-    .from(attempts)
-    .where(and(eq(attempts.id, attemptId), eq(attempts.userId, session.userId)))
-    .limit(1);
+  const attempt = await ownAttempt(attemptId, session.userId);
 
   if (!attempt || attempt.status !== "in_progress") {
     return { warningCount: 0, terminated: true, maxWarnings: 0 };
@@ -320,143 +352,43 @@ export async function recordViolation(
     .limit(1);
 
   const maxWarnings = test?.maxWarnings ?? 3;
+  const unchanged = {
+    warningCount: attempt.warningCount,
+    terminated: false,
+    maxWarnings,
+  };
 
-  // A test with the camera off never counts a camera warning, whatever the
-  // browser sends.
+  // Nothing counts before the student has begun, nothing the exam page
+  // could not have raised is stored, and a test with the camera off never
+  // counts a camera warning, whatever the browser sends.
+  if (!attempt.begunAt) return unchanged;
+  if (typeof type !== "string" || !VIOLATION_TYPES.has(type)) return unchanged;
   if (test && !test.cameraRequired && CAMERA_VIOLATIONS.has(type)) {
-    return {
-      warningCount: attempt.warningCount,
-      terminated: false,
-      maxWarnings,
-    };
+    return unchanged;
   }
-  const next = attempt.warningCount + 1;
+
+  // Counted in the database, not read, added to and written back, so two
+  // warnings arriving together both count.
+  const [counted] = await db
+    .update(attempts)
+    .set({ warningCount: sql`${attempts.warningCount} + 1` })
+    .where(and(eq(attempts.id, attempt.id), eq(attempts.status, "in_progress")))
+    .returning({ warningCount: attempts.warningCount });
+
+  if (!counted) return { warningCount: attempt.warningCount, terminated: true, maxWarnings };
 
   await db.insert(violations).values({
-    attemptId,
+    attemptId: attempt.id,
     type,
-    detail: detail ?? null,
+    detail: typeof detail === "string" ? detail.slice(0, 200) : null,
   });
 
-  await db
-    .update(attempts)
-    .set({ warningCount: next })
-    .where(eq(attempts.id, attemptId));
-
-  if (next >= maxWarnings) {
-    await submitAttempt(attemptId, "terminated");
-    return { warningCount: next, terminated: true, maxWarnings };
+  if (counted.warningCount >= maxWarnings) {
+    await finalizeAttempt(attempt.id, "terminated");
+    return { warningCount: counted.warningCount, terminated: true, maxWarnings };
   }
 
-  return { warningCount: next, terminated: false, maxWarnings };
-}
-
-/** Grades and closes an attempt. Safe to call more than once. */
-export async function submitAttempt(
-  attemptId: string,
-  reason: "submitted" | "auto_submitted" | "terminated" = "submitted",
-): Promise<{ ok: boolean; score?: number; maxScore?: number }> {
-  const [attempt] = await db
-    .select()
-    .from(attempts)
-    .where(eq(attempts.id, attemptId))
-    .limit(1);
-
-  if (!attempt) return { ok: false };
-  if (attempt.status !== "in_progress") {
-    return {
-      ok: true,
-      score: Number(attempt.totalScore ?? 0),
-      maxScore: Number(attempt.maxScore ?? 0),
-    };
-  }
-
-  const sectionRows = await db
-    .select()
-    .from(sections)
-    .where(eq(sections.testId, attempt.testId));
-
-  const sectionIds = sectionRows.map((s) => s.id);
-  const questionRows =
-    sectionIds.length > 0
-      ? await db
-          .select()
-          .from(questions)
-          .where(inArray(questions.sectionId, sectionIds))
-      : [];
-
-  const optionRows =
-    questionRows.length > 0
-      ? await db
-          .select()
-          .from(options)
-          .where(
-            inArray(
-              options.questionId,
-              questionRows.map((q) => q.id),
-            ),
-          )
-      : [];
-
-  const savedAnswers = await db
-    .select()
-    .from(answers)
-    .where(eq(answers.attemptId, attemptId));
-
-  const gradable: GradableQuestion[] = questionRows.map((q) => {
-    const section = sectionRows.find((s) => s.id === q.sectionId)!;
-    return {
-      id: q.id,
-      type: q.type,
-      sectionMarks: Number(section.defaultMarks),
-      sectionNegative: Number(section.negativeMarks),
-      marksOverride: q.marksOverride === null ? null : Number(q.marksOverride),
-      negativeOverride:
-        q.negativeOverride === null ? null : Number(q.negativeOverride),
-      options: optionRows
-        .filter((o) => o.questionId === q.id)
-        .map((o) => ({ id: o.id, isCorrect: o.isCorrect })),
-      acceptedAnswers: q.acceptedAnswers,
-    };
-  });
-
-  const result = gradeAttempt(
-    gradable,
-    savedAnswers.map((a) => ({
-      questionId: a.questionId,
-      selectedOptionIds: a.selectedOptionIds,
-      textAnswer: a.textAnswer,
-    })),
-  );
-
-  // Write per-question outcomes back, which the analytics reads later.
-  for (const graded of result.answers) {
-    if (!graded.attempted) continue;
-    await db
-      .update(answers)
-      .set({
-        isCorrect: graded.isCorrect,
-        awardedMarks: String(graded.awardedMarks),
-      })
-      .where(
-        and(
-          eq(answers.attemptId, attemptId),
-          eq(answers.questionId, graded.questionId),
-        ),
-      );
-  }
-
-  await db
-    .update(attempts)
-    .set({
-      status: reason === "submitted" ? "submitted" : reason,
-      submittedAt: new Date(),
-      totalScore: String(result.totalScore),
-      maxScore: String(result.maxScore),
-    })
-    .where(eq(attempts.id, attemptId));
-
-  return { ok: true, score: result.totalScore, maxScore: result.maxScore };
+  return { warningCount: counted.warningCount, terminated: false, maxWarnings };
 }
 
 /** Called by the student's submit button. */
@@ -464,15 +396,9 @@ export async function submitOwnAttempt(
   attemptId: string,
 ): Promise<{ ok: boolean; score?: number; maxScore?: number }> {
   const session = await requireStudent();
-
-  const [attempt] = await db
-    .select({ id: attempts.id })
-    .from(attempts)
-    .where(and(eq(attempts.id, attemptId), eq(attempts.userId, session.userId)))
-    .limit(1);
-
+  const attempt = await ownAttempt(attemptId, session.userId);
   if (!attempt) return { ok: false };
-  return submitAttempt(attemptId, "submitted");
+  return finalizeAttempt(attempt.id, "submitted");
 }
 
 /** Heartbeat, so the browser clock can never be the authority. */
@@ -480,19 +406,14 @@ export async function checkTime(
   attemptId: string,
 ): Promise<{ remainingMs: number; status: string }> {
   const session = await requireStudent();
-
-  const [attempt] = await db
-    .select()
-    .from(attempts)
-    .where(and(eq(attempts.id, attemptId), eq(attempts.userId, session.userId)))
-    .limit(1);
+  const attempt = await ownAttempt(attemptId, session.userId);
 
   if (!attempt) return { remainingMs: 0, status: "missing" };
 
   const remainingMs = Math.max(0, attempt.deadlineAt.getTime() - Date.now());
 
   if (remainingMs === 0 && attempt.status === "in_progress") {
-    await submitAttempt(attemptId, "auto_submitted");
+    await finalizeAttempt(attempt.id, "auto_submitted");
     return { remainingMs: 0, status: "auto_submitted" };
   }
 

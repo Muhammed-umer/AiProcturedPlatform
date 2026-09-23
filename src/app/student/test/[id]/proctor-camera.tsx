@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FaceDetector } from "@mediapipe/tasks-vision";
-import { uploadSnapshot } from "@/app/actions/proctor";
 import {
   createProctorState,
   observeFaces,
@@ -27,7 +26,6 @@ import {
 
 // Sampled every second so the three-second head-turn rule is judged accurately.
 const DETECT_EVERY_MS = 1_000;
-const LATEST_EVERY_MS = 15_000;
 const FRAME_WIDTH = 320;
 const FRAME_HEIGHT = 240;
 const JPEG_QUALITY = 0.5;
@@ -64,6 +62,7 @@ export function ProctorCamera({
   onViolation,
   onFaceCount,
   onStatus,
+  captureRef,
 }: {
   attemptId: string;
   stream: MediaStream;
@@ -74,6 +73,12 @@ export function ProctorCamera({
   onViolation: (type: ProctorViolationType, message: string) => void;
   onFaceCount?: (count: number) => void;
   onStatus?: (status: CameraStatus) => void;
+  /**
+   * Filled with a function that returns the current frame as a JPEG data
+   * URL. The exam runner calls it once, as the test ends, for the single
+   * photo that is kept.
+   */
+  captureRef?: React.MutableRefObject<(() => string | null) | null>;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -149,19 +154,15 @@ export function ProctorCamera({
     }
   }, [videoReady]);
 
-  const sendLatest = useCallback(() => {
-    if (!activeRef.current) return false;
-    const frame = captureFrame();
-    if (!frame) return false;
-    void uploadSnapshot(attemptId, frame, "latest", {
-      faceCount: facesRef.current ?? undefined,
-    }).catch(() => {
-      // Offline. The next tick tries again.
-    });
-    return true;
-  }, [attemptId, captureFrame]);
+  useEffect(() => {
+    if (!captureRef) return;
+    captureRef.current = captureFrame;
+    return () => {
+      captureRef.current = null;
+    };
+  }, [captureRef, captureFrame]);
 
-  /* ------------------------------------------- detection and uploading -- */
+  /* --------------------------------------------------------- detection -- */
 
   useEffect(() => {
     let detector: FaceDetector | null = null;
@@ -234,38 +235,19 @@ export function ProctorCamera({
       );
       state = result.state;
 
+      // Each flag is reported by name only; no frame leaves the browser
+      // during the test.
       for (const type of result.flags) {
-        const frame = captureFrame();
-        if (frame) {
-          void uploadSnapshot(attemptId, frame, "flagged", {
-            flagType: type,
-            faceCount: count,
-          }).catch(() => {});
-        }
         onViolationRef.current(type, PROCTOR_MESSAGES[type]);
       }
     }, DETECT_EVERY_MS);
 
-    // First thumbnail as soon as the exam starts and the video has frames,
-    // then on a slow cadence.
-    let firstSent = false;
-    const warmup = setInterval(() => {
-      if (firstSent) {
-        clearInterval(warmup);
-        return;
-      }
-      firstSent = sendLatest();
-    }, 1_000);
-    const latestTick = setInterval(sendLatest, LATEST_EVERY_MS);
-
     return () => {
       cancelled = true;
       clearInterval(detectTick);
-      clearInterval(warmup);
-      clearInterval(latestTick);
       detector?.close();
     };
-  }, [attemptId, captureFrame, sendLatest, videoReady]);
+  }, [videoReady]);
 
   /* ------------------------------------------------------------- view -- */
 

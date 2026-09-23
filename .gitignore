@@ -24,3 +24,6 @@ playwright-report/
 # misc
 *.log
 .DS_Store
+
+# oh-my-claudecode plugin state
+.omc/

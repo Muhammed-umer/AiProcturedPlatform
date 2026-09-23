@@ -16,9 +16,9 @@ export default async function StudentLayout({
 
   // StudentShell drops this entirely while a test is open.
   const header = (
-    <header className="shrink-0 z-40 bg-white border-b border-line">
-      <div className="mx-auto max-w-5xl px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-        <Logo />
+    <header className="shrink-0 z-40 bg-white border-t-[3px] border-t-brand-500 border-b border-line">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+        <Logo href="/student" />
         <div className="flex items-center gap-3 min-w-0">
           <div className="text-right min-w-0 hidden sm:block">
             <div className="text-[13.5px] font-medium truncate max-w-[20ch]">

@@ -1,5 +1,5 @@
 import type { Section, Question, Option } from "@/db/schema";
-import { Badge } from "@/components/ui";
+import { Badge, EmptyState, ConfirmForm, SubmitButton } from "@/components/ui";
 import { deleteQuestion } from "@/app/actions/admin";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -21,11 +21,10 @@ export function QuestionList({
 }) {
   if (questions.length === 0) {
     return (
-      <div className="card p-8 text-center">
-        <p className="text-[15px] text-ink-2">
-          No questions yet. Add one above, or import a spreadsheet.
-        </p>
-      </div>
+      <EmptyState
+        title="No questions yet"
+        message="Add one with the form above, or import a spreadsheet or a document."
+      />
     );
   }
 
@@ -83,13 +82,20 @@ export function QuestionList({
                           {overridden && " (custom)"}
                         </Badge>
                       </div>
-                      <form action={deleteQuestion} className="shrink-0">
+                      <ConfirmForm
+                        action={deleteQuestion}
+                        confirm={`Delete question ${index + 1} of ${section.name}? This cannot be undone.`}
+                        className="shrink-0"
+                      >
                         <input type="hidden" name="testId" value={testId} />
                         <input type="hidden" name="questionId" value={q.id} />
-                        <button type="submit" className="btn-danger btn-sm">
+                        <SubmitButton
+                          className="btn-danger btn-sm"
+                          pendingText="Deleting…"
+                        >
                           Delete
-                        </button>
-                      </form>
+                        </SubmitButton>
+                      </ConfirmForm>
                     </div>
 
                     <p className="text-[15px] text-ink mb-3 whitespace-pre-wrap">

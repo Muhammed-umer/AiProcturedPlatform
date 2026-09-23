@@ -116,12 +116,16 @@ sends. Full screen and tab switching are enforced either way.
   checked every second. This logic is pure and unit-tested
   (`src/lib/proctor-flags.ts`).
 - The rules are listed for the student on the start screen, before they begin.
-- Frames are small 320×240 JPEGs. Only two kinds are kept: one continuously
-  overwritten "latest" frame per student for the live monitor, and one frame
-  saved at the moment of each camera violation as evidence. They live in
-  PostgreSQL (`proctor_snapshots`), so `pg_dump` covers them.
-- The live monitor shows each student's latest frame and a camera-review page
-  per attempt lists every flagged moment.
+- **No pictures leave the browser during the test.** The detector runs
+  locally and reports only its verdict, as a named warning: "No face
+  visible", "More than one face", "Turned away", "Camera turned off". Staff
+  see those names on the live monitor and on each attempt's review page, next
+  to the tab-switch and full-screen warnings, with the time of each.
+- **One photo per attempt** is kept: a 320×240 JPEG taken at the moment the
+  test ends, whether the student submits, the clock runs out, or the warning
+  limit ends it. It is stored in PostgreSQL (`proctor_snapshots`, kind
+  `final`), so `pg_dump` covers it, and shown on the review page as a record
+  of who was sitting there when the paper was handed in.
 - Not built: eye-gaze tracking. Head turn is detected, but where the eyes are
   pointing within a forward-facing head is not, because that needs a heavier
   model and is far more prone to wrongly ending a test.

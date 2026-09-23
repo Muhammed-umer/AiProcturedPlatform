@@ -21,8 +21,12 @@ const globalForDb = globalThis as unknown as {
 const client =
   globalForDb.__ptpClient ??
   postgres(connectionString, {
-    // Sixty students produce a light, bursty load. Ten is generous.
-    max: 10,
+    // Measured with 100 students writing at once (scripts/load): the steady
+    // load is about a hundred short queries a second, which ten connections
+    // handle, but the bursts - everyone opening or submitting in the same
+    // second - queue less with twenty. Well inside PostgreSQL's default of
+    // 100 connections.
+    max: 20,
     idle_timeout: 20,
   });
 

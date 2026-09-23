@@ -32,7 +32,7 @@ export default function ForgotPasswordPage() {
     <main className="min-h-dvh flex items-center justify-center p-6">
       <div className="w-full max-w-[440px] fade-up">
         <div className="mb-8">
-          <Logo />
+          <Logo href="/login" />
         </div>
 
         <div className="card p-6 sm:p-8">

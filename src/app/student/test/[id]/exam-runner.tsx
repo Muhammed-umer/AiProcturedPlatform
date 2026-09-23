@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ExamPaper } from "@/app/actions/attempt";
+import type { ExamPaper, StudentQuestion } from "@/app/actions/attempt";
 import {
+  beginAttempt,
   saveAnswer,
   recordViolation,
   submitOwnAttempt,
   checkTime,
 } from "@/app/actions/attempt";
 import { ProctorCamera, type CameraStatus } from "./proctor-camera";
+import { uploadFinalPhoto } from "@/app/actions/proctor";
 
 /** A student-facing reason the webcam could not be started. */
 function cameraErrorMessage(err: unknown): string {
@@ -62,7 +64,14 @@ export function ExamRunner({
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [needsFullscreen, setNeedsFullscreen] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // How many answers are on their way to the server, and whether the last
+  // attempt to save one failed (it is retried until it goes through).
+  const [pendingSaves, setPendingSaves] = useState(0);
+  const [saveFailed, setSaveFailed] = useState(false);
+  // Empty until Continue: the server only sends the paper once the clock
+  // has really started. A resumed attempt arrives with it already.
+  const [questions, setQuestions] = useState<StudentQuestion[]>(paper.questions);
+  const [beginError, setBeginError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -79,6 +88,9 @@ export function ExamRunner({
   const streamRef = useRef<MediaStream | null>(null);
   // Read inside the violation funnel, which must not re-create on every change.
   const examStartedRef = useRef(false);
+  const lastFocusFlagRef = useRef(0);
+  // Set further down, once the save queue exists; finish() calls it.
+  const flushSavesRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     examStartedRef.current = examStarted;
   }, [examStarted]);
@@ -86,8 +98,8 @@ export function ExamRunner({
   // Set per test by the admin. When off, the webcam is never asked for.
   const cameraOn = paper.cameraRequired;
 
-  const question = paper.questions[current];
-  const total = paper.questions.length;
+  const question = questions[current];
+  const total = questions.length;
 
   /* ------------------------------------------------------------ camera -- */
 
@@ -100,6 +112,22 @@ export function ExamRunner({
 
   useEffect(() => stopCamera, [stopCamera]);
 
+  // Set by the camera component; returns the current frame as a JPEG.
+  const captureRef = useRef<(() => string | null) | null>(null);
+
+  // The one photo that is kept: the student as the test ends. Taken before
+  // the camera is stopped, sent alongside whatever closes the attempt, and
+  // never allowed to hold the student up if it fails.
+  const sendFinalPhoto = useCallback(async () => {
+    const frame = captureRef.current?.();
+    if (!frame) return;
+    try {
+      await uploadFinalPhoto(paper.attemptId, frame);
+    } catch {
+      // Offline. The attempt still closes; the photo is simply absent.
+    }
+  }, [paper.attemptId]);
+
   /* ------------------------------------------------------- submitting -- */
 
   const finish = useCallback(
@@ -108,11 +136,14 @@ export function ExamRunner({
       finishedRef.current = true;
       setSubmitting(true);
 
-      try {
-        await submitOwnAttempt(paper.attemptId);
-      } catch {
-        // The server may already have closed it, which is fine.
-      }
+      // Anything typed in the last moments is sent before the paper is
+      // marked, so the final answer is the one that counts.
+      await flushSavesRef.current();
+
+      await Promise.allSettled([
+        sendFinalPhoto(),
+        submitOwnAttempt(paper.attemptId),
+      ]);
 
       stopCamera();
       if (document.fullscreenElement) {
@@ -123,7 +154,7 @@ export function ExamRunner({
         `/student/result/${paper.attemptId}${auto ? "?auto=1" : ""}`,
       );
     },
-    [paper.attemptId, router, stopCamera],
+    [paper.attemptId, router, stopCamera, sendFinalPhoto],
   );
 
   /* -------------------------------------------------------- violations -- */
@@ -136,6 +167,13 @@ export function ExamRunner({
       // losing focus, copy and paste - so this one guard covers them all.
       if (!examStartedRef.current) return;
 
+      // One alt-tab fires both "blur" and "visibilitychange". Count it once.
+      if (type === "tab_switch" || type === "window_blur") {
+        const now = Date.now();
+        if (now - lastFocusFlagRef.current < 2000) return;
+        lastFocusFlagRef.current = now;
+      }
+
       setWarningMessage(message);
 
       try {
@@ -146,6 +184,7 @@ export function ExamRunner({
         if (res.terminated) {
           setTerminated(true);
           finishedRef.current = true;
+          await sendFinalPhoto();
           stopCamera();
           setTimeout(() => {
             router.replace(`/student/result/${paper.attemptId}?terminated=1`);
@@ -155,7 +194,7 @@ export function ExamRunner({
         // Offline. The warning still shows, and the count syncs on reconnect.
       }
     },
-    [paper.attemptId, router, terminated, stopCamera],
+    [paper.attemptId, router, terminated, stopCamera, sendFinalPhoto],
   );
 
   /* -------------------------------------------------------- fullscreen -- */
@@ -188,15 +227,44 @@ export function ExamRunner({
   // so the clock never starts on a covered or unplugged camera.
   const startExam = useCallback(async () => {
     setStarting(true);
+    setBeginError(null);
     try {
       await document.documentElement.requestFullscreen();
+    } catch {
+      // Some browsers refuse outside a user gesture. The prompt stays up.
+      setStarting(false);
+      return;
+    }
+
+    // Returning to full screen mid-test needs nothing from the server.
+    if (examStartedRef.current) {
+      setNeedsFullscreen(false);
+      setStarting(false);
+      return;
+    }
+
+    try {
+      // Starts the real clock on the server and fetches the paper.
+      const res = await beginAttempt(paper.attemptId);
+      if ("error" in res) {
+        setBeginError(res.error);
+        await document.exitFullscreen().catch(() => {});
+        setStarting(false);
+        return;
+      }
+      setQuestions(res.questions);
+      setAnswers(res.savedAnswers);
+      setRemainingMs(res.remainingMs);
       setNeedsFullscreen(false);
       setExamStarted(true);
     } catch {
-      // Some browsers refuse outside a user gesture. The prompt stays up.
+      setBeginError(
+        "Could not reach the server to start your test. Check the network cable and try again.",
+      );
+      await document.exitFullscreen().catch(() => {});
     }
     setStarting(false);
-  }, []);
+  }, [paper.attemptId]);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -304,6 +372,8 @@ export function ExamRunner({
   /* ------------------------------------------------------------ timer -- */
 
   useEffect(() => {
+    // The clock has not started while the student reads the instructions.
+    if (!examStarted) return;
     const tick = setInterval(() => {
       setRemainingMs((ms) => {
         const next = ms - 1000;
@@ -312,10 +382,11 @@ export function ExamRunner({
       });
     }, 1000);
     return () => clearInterval(tick);
-  }, [finish]);
+  }, [finish, examStarted]);
 
   // Resync with the server every 20 seconds, so a tampered clock gains nothing.
   useEffect(() => {
+    if (!examStarted) return;
     const sync = setInterval(async () => {
       if (finishedRef.current) return;
       try {
@@ -323,6 +394,7 @@ export function ExamRunner({
         setRemainingMs(res.remainingMs);
         if (res.status !== "in_progress" && !finishedRef.current) {
           finishedRef.current = true;
+          await sendFinalPhoto();
           router.replace(`/student/result/${paper.attemptId}?auto=1`);
         }
       } catch {
@@ -330,16 +402,24 @@ export function ExamRunner({
       }
     }, 20_000);
     return () => clearInterval(sync);
-  }, [paper.attemptId, router]);
+  }, [paper.attemptId, router, examStarted, sendFinalPhoto]);
 
   /* ---------------------------------------------------------- answers -- */
+
+  // The newest value per question still waiting to reach the server. A
+  // failed save stays here and is retried, so a network blip loses nothing.
+  const unsavedRef = useRef(
+    new Map<string, { selectedOptionIds: string[]; textAnswer: string }>(),
+  );
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const persist = useCallback(
     async (
       questionId: string,
       value: { selectedOptionIds: string[]; textAnswer: string },
-    ) => {
-      setSaving(true);
+    ): Promise<void> => {
+      unsavedRef.current.set(questionId, value);
+      setPendingSaves((n) => n + 1);
       try {
         const res = await saveAnswer(paper.attemptId, questionId, {
           selectedOptionIds: value.selectedOptionIds,
@@ -348,15 +428,40 @@ export function ExamRunner({
         if (res.expired && !finishedRef.current) {
           finishedRef.current = true;
           router.replace(`/student/result/${paper.attemptId}?auto=1`);
+          return;
         }
+        // Only clear it if nothing newer was queued while this was in flight.
+        if (unsavedRef.current.get(questionId) === value) {
+          unsavedRef.current.delete(questionId);
+        }
+        setSaveFailed(false);
       } catch {
-        // Kept locally, retried on the next change.
+        setSaveFailed(true);
+        if (!retryRef.current && !finishedRef.current) {
+          retryRef.current = setTimeout(() => {
+            retryRef.current = null;
+            for (const [qid, v] of unsavedRef.current) void persist(qid, v);
+          }, 3000);
+        }
       } finally {
-        setSaving(false);
+        setPendingSaves((n) => n - 1);
       }
     },
     [paper.attemptId, router],
   );
+
+  const textTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+  // Sends everything still unsaved, including text typed within the last
+  // moment, and waits for it. Used just before the paper is submitted.
+  useEffect(() => {
+    flushSavesRef.current = async () => {
+      for (const t of textTimers.current.values()) clearTimeout(t);
+      textTimers.current.clear();
+      const waiting = [...unsavedRef.current.entries()];
+      await Promise.allSettled(waiting.map(([qid, v]) => persist(qid, v)));
+    };
+  }, [persist]);
 
   const setChoice = (optionId: string) => {
     if (!question) return;
@@ -377,17 +482,26 @@ export function ExamRunner({
     void persist(question.id, next);
   };
 
-  const textTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const setText = (value: string) => {
     if (!question) return;
+    const questionId = question.id;
     const next = { selectedOptionIds: [], textAnswer: value };
-    setAnswers((a) => ({ ...a, [question.id]: next }));
+    setAnswers((a) => ({ ...a, [questionId]: next }));
+    // Queued at once, so a submit in the next 600 ms still includes it.
+    unsavedRef.current.set(questionId, next);
 
-    if (textTimer.current) clearTimeout(textTimer.current);
-    textTimer.current = setTimeout(() => {
-      void persist(question.id, next);
-    }, 600);
+    // One timer per question: moving on to the next question straight after
+    // typing no longer cancels the save of the one before.
+    const timers = textTimers.current;
+    const existing = timers.get(questionId);
+    if (existing) clearTimeout(existing);
+    timers.set(
+      questionId,
+      setTimeout(() => {
+        timers.delete(questionId);
+        void persist(questionId, next);
+      }, 600),
+    );
   };
 
   const isAnswered = (id: string) => {
@@ -396,7 +510,7 @@ export function ExamRunner({
     return a.selectedOptionIds.length > 0 || a.textAnswer.trim().length > 0;
   };
 
-  const answeredCount = paper.questions.filter((q) => isAnswered(q.id)).length;
+  const answeredCount = questions.filter((q) => isAnswered(q.id)).length;
   const lowTime = remainingMs <= 60_000;
 
   // Mounted on both the gate screen and the paper, so the camera keeps
@@ -414,6 +528,7 @@ export function ExamRunner({
         onViolation={flag}
         onFaceCount={setFaceCount}
         onStatus={setCameraStatus}
+        captureRef={captureRef}
       />
     ) : null;
 
@@ -511,9 +626,9 @@ export function ExamRunner({
             Before you begin
           </h1>
           <p className="text-[14.5px] text-ink-2 mt-1.5">
-            {paper.testTitle} &middot; {paper.questions.length} question
-            {paper.questions.length === 1 ? "" : "s"} &middot;{" "}
-            {Math.round(paper.remainingMs / 60000)} minutes
+            {paper.testTitle} &middot; {paper.questionCount} question
+            {paper.questionCount === 1 ? "" : "s"} &middot;{" "}
+            {paper.durationMinutes} minutes
             {paper.maxAttempts > 1 && (
               <>
                 {" "}
@@ -672,8 +787,19 @@ export function ExamRunner({
                     : "Continue to the test"}
           </button>
 
+          {beginError && (
+            <div
+              className="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13.5px] text-red-800"
+              role="alert"
+            >
+              {beginError}
+            </div>
+          )}
+
           <p className="text-[12.5px] text-ink-3 mt-3 text-center">
-            The timer and your warnings start only when you continue.
+            {paper.begun
+              ? "Your test is already running and the clock did not stop while you were away. Continue to carry on where you left off."
+              : "The questions, the timer and your warnings start only when you continue."}
           </p>
 
           {warnings > 0 && (
@@ -697,7 +823,16 @@ export function ExamRunner({
             </div>
             <div className="text-[12px] text-ink-3 tabular-nums">
               {answeredCount} of {total} answered
-              {saving && " · saving"}
+              {saveFailed ? (
+                <span className="text-red-700 font-semibold">
+                  {" "}
+                  · Not saved yet, retrying
+                </span>
+              ) : pendingSaves > 0 ? (
+                " · Saving…"
+              ) : (
+                " · All answers saved"
+              )}
             </div>
           </div>
 
@@ -707,11 +842,15 @@ export function ExamRunner({
                 {warnings}/{paper.maxWarnings} warnings
               </span>
             )}
+            {/* Neutral, then amber under five minutes, then red under one.
+                Colour only: nothing moves on the exam screen. */}
             <div
-              className={`rounded-lg px-3 py-1.5 font-bold text-[17px] tabular-nums ${
+              className={`rounded-lg border px-3 py-1.5 font-bold text-[17px] tabular-nums ${
                 lowTime
-                  ? "bg-red-100 text-red-800 animate-pulse"
-                  : "bg-brand-100 text-brand-900"
+                  ? "border-red-300 bg-red-100 text-red-800"
+                  : remainingMs <= 5 * 60_000
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-line bg-canvas text-ink"
               }`}
               role="timer"
               aria-live="off"
@@ -720,7 +859,7 @@ export function ExamRunner({
             </div>
             <button
               onClick={() => setConfirmOpen(true)}
-              className="btn-primary btn-sm"
+              className="btn-ghost btn-sm"
               disabled={submitting}
             >
               Submit
@@ -749,7 +888,10 @@ export function ExamRunner({
                   )}
                 </div>
 
-                <h2 className="text-[17px] sm:text-[19px] font-semibold leading-relaxed mb-6 whitespace-pre-wrap">
+                <h2
+                  id="question-text"
+                  className="text-[17px] sm:text-[19px] font-semibold leading-relaxed mb-6 whitespace-pre-wrap"
+                >
                   <span className="text-ink-3 mr-2 tabular-nums">
                     {current + 1}.
                   </span>
@@ -767,7 +909,13 @@ export function ExamRunner({
                     spellCheck={false}
                   />
                 ) : (
-                  <div className="space-y-2.5">
+                  <div
+                    className="space-y-2.5"
+                    role={
+                      question.type === "mcq_multiple" ? "group" : "radiogroup"
+                    }
+                    aria-labelledby="question-text"
+                  >
                     {question.options.map((opt, i) => {
                       const selected =
                         answers[question.id]?.selectedOptionIds.includes(
@@ -777,6 +925,12 @@ export function ExamRunner({
                         <button
                           key={opt.id}
                           type="button"
+                          role={
+                            question.type === "mcq_multiple"
+                              ? "checkbox"
+                              : "radio"
+                          }
+                          aria-checked={selected}
                           onClick={() => setChoice(opt.id)}
                           className={`w-full flex items-start gap-3 rounded-lg border px-4 py-3.5 text-left transition ${
                             selected
@@ -785,6 +939,7 @@ export function ExamRunner({
                           }`}
                         >
                           <span
+                            aria-hidden="true"
                             className={`grid h-6 w-6 shrink-0 place-items-center text-[12px] font-bold ${
                               question.type === "mcq_multiple"
                                 ? "rounded-md"
@@ -831,12 +986,12 @@ export function ExamRunner({
           </div>
 
           {/* Question palette */}
-          <aside className="card p-4 lg:sticky lg:top-20">
+          <aside className="card p-4 lg:sticky lg:top-6">
             <h3 className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-3 mb-3">
               Questions
             </h3>
             <div className="grid grid-cols-6 lg:grid-cols-5 gap-1.5">
-              {paper.questions.map((q, i) => {
+              {questions.map((q, i) => {
                 const answered = isAnswered(q.id);
                 const active = i === current;
                 return (
@@ -844,13 +999,12 @@ export function ExamRunner({
                     key={q.id}
                     onClick={() => setCurrent(i)}
                     aria-label={`Question ${i + 1}${answered ? ", answered" : ""}`}
+                    aria-current={active ? "step" : undefined}
                     className={`h-8 rounded-md text-[12.5px] font-bold tabular-nums transition ${
-                      active
-                        ? "bg-ink text-white"
-                        : answered
-                          ? "bg-brand-400 text-ink"
-                          : "bg-canvas text-ink-3 border border-line hover:border-brand-300"
-                    }`}
+                      answered
+                        ? "bg-brand-400 text-ink"
+                        : "bg-canvas text-ink-2 border border-line hover:border-brand-300"
+                    } ${active ? "ring-2 ring-ink ring-offset-2 ring-offset-white" : ""}`}
                   >
                     {i + 1}
                   </button>
@@ -864,6 +1018,10 @@ export function ExamRunner({
               <div className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded bg-canvas border border-line" />{" "}
                 Not answered
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded bg-white ring-2 ring-ink" />{" "}
+                Current
               </div>
             </div>
           </aside>
@@ -904,8 +1062,16 @@ export function ExamRunner({
       {/* Submit confirmation */}
       {confirmOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-6">
-          <div className="card max-w-[420px] w-full p-6">
-            <h2 className="text-[19px] font-bold tracking-tight">
+          <div
+            className="card max-w-[420px] w-full p-6 shadow-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="submit-dialog-title"
+          >
+            <h2
+              id="submit-dialog-title"
+              className="text-[19px] font-bold tracking-tight"
+            >
               Submit your test?
             </h2>
             <p className="text-[14.5px] text-ink-2 mt-2">

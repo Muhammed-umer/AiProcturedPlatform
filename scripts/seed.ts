@@ -17,7 +17,7 @@ import postgres from "postgres";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import * as schema from "../src/db/schema";
-import { SEED_PASSWORD, SEED_ADMIN, SEED_STUDENT } from "../src/lib/seed-accounts";
+import { SEED_ADMIN, SEED_STUDENT } from "../src/lib/seed-accounts";
 
 // Load .env without a dotenv dependency, so setup needs one fewer package.
 try {
@@ -59,9 +59,29 @@ if (process.env.NODE_ENV === "production") {
 const client = postgres(url, { max: 1 });
 const db = drizzle(client, { schema });
 
+/**
+ * NODE_ENV is not set in a plain shell on the lab server, so it cannot be
+ * the only thing standing between a typo and a wiped exam database. Refuse
+ * whenever the database already holds submitted tests, unless --force.
+ */
+async function refuseIfRealData() {
+  if (process.argv.includes("--force")) return;
+  const [{ n }] = await client<{ n: number }[]>`
+    select count(*)::int as n from attempts where status <> 'in_progress'`;
+  if (n > 0) {
+    console.error(
+      `Refusing to seed: the database holds ${n} submitted attempt(s), and seeding deletes every account.\n` +
+        "If this really is a development database, run: npm run db:seed -- --force",
+    );
+    await client.end();
+    process.exit(1);
+  }
+}
+
 const hash = (p: string) => bcrypt.hash(p, 10);
 
 async function main() {
+  await refuseIfRealData();
   console.log("Seeding…");
 
   /* ---------------------------------------------------------- accounts */
@@ -81,13 +101,13 @@ async function main() {
       rollNumber: SEED_ADMIN.rollNumber,
       name: SEED_ADMIN.name,
       email: null,
-      passwordHash: await hash(SEED_PASSWORD),
+      passwordHash: await hash(SEED_ADMIN.password),
       role: "admin",
-      // Both accounts set their own password on first sign-in.
-      mustChangePassword: true,
+      // Demo accounts keep their short passwords; see seed-accounts.ts.
+      mustChangePassword: false,
     })
     .returning();
-  console.log(`  admin    ${admin.rollNumber}  password: ${SEED_PASSWORD}`);
+  console.log(`  admin    ${admin.rollNumber}  password: ${SEED_ADMIN.password}`);
 
   const [student] = await db
     .insert(users)
@@ -95,12 +115,12 @@ async function main() {
       rollNumber: SEED_STUDENT.rollNumber,
       name: SEED_STUDENT.name,
       email: SEED_STUDENT.email,
-      passwordHash: await hash(SEED_PASSWORD),
+      passwordHash: await hash(SEED_STUDENT.password),
       role: "student",
-      mustChangePassword: true,
+      mustChangePassword: false,
     })
     .returning();
-  console.log(`  student  ${student.rollNumber}  password: ${SEED_PASSWORD}`);
+  console.log(`  student  ${student.rollNumber}  password: ${SEED_STUDENT.password}`);
 
   /* ------------------------------------------------------- demo group */
 
@@ -229,7 +249,7 @@ async function main() {
   }
 
   console.log(
-    `\nDone. Sign in at /login\n  admin   ${SEED_ADMIN.rollNumber} / ${SEED_PASSWORD}\n  student ${SEED_STUDENT.rollNumber} / ${SEED_PASSWORD}`,
+    `\nDone. Sign in at /login\n  admin   ${SEED_ADMIN.rollNumber} / ${SEED_ADMIN.password}\n  student ${SEED_STUDENT.rollNumber} / ${SEED_STUDENT.password}`,
   );
   await client.end();
 }

@@ -1,13 +1,24 @@
+import type { Metadata } from "next";
 import { sql, eq } from "drizzle-orm";
+import { requireAdminPage } from "@/lib/session";
 import { db } from "@/db";
 import { users, groups, groupMembers } from "@/db/schema";
-import { PageHeader, TableWrap, Badge, EmptyState } from "@/components/ui";
-import { resetStudentPassword } from "@/app/actions/admin";
+import {
+  PageHeader,
+  TableWrap,
+  Badge,
+  EmptyState,
+  SectionTitle,
+} from "@/components/ui";
+import { ResetPasswordButton } from "./reset-password-button";
 import { ImportForm } from "./import-form";
+
+export const metadata: Metadata = { title: "Students" };
 
 export const dynamic = "force-dynamic";
 
 export default async function StudentsPage() {
+  await requireAdminPage();
   const groupList = await db
     .select({ id: groups.id, name: groups.name })
     .from(groups)
@@ -45,17 +56,16 @@ export default async function StudentsPage() {
         <ImportForm groups={groupList} />
       </div>
 
-      <div className="flex items-baseline justify-between gap-3 mb-3">
-        <h2 className="text-[17px] font-bold tracking-tight">
-          All students
-          <span className="text-ink-3 font-medium ml-2 text-[15px] tabular-nums">
-            {students.length}
-          </span>
-        </h2>
-        {students.length === 500 && (
-          <span className="text-[12.5px] text-ink-3">Showing the first 500</span>
-        )}
-      </div>
+      <SectionTitle
+        count={students.length}
+        aside={
+          students.length === 500 && (
+            <span className="text-[12.5px] text-ink-3">Showing the first 500</span>
+          )
+        }
+      >
+        All students
+      </SectionTitle>
 
       {students.length === 0 ? (
         <EmptyState
@@ -101,17 +111,10 @@ export default async function StudentsPage() {
                     )}
                   </td>
                   <td className="td text-right">
-                    <form action={resetStudentPassword}>
-                      <input type="hidden" name="userId" value={s.id} />
-                      <input
-                        type="hidden"
-                        name="rollNumber"
-                        value={s.rollNumber}
-                      />
-                      <button className="btn-ghost btn-sm" type="submit">
-                        Reset password
-                      </button>
-                    </form>
+                    <ResetPasswordButton
+                      userId={s.id}
+                      rollNumber={s.rollNumber}
+                    />
                   </td>
                 </tr>
               ))}

@@ -1,9 +1,12 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { startAttempt } from "@/app/actions/attempt";
 import { getSession } from "@/lib/session";
 import { ExamRunner } from "./exam-runner";
 import { Alert, Logo } from "@/components/ui";
+
+export const metadata: Metadata = { title: "Test" };
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +15,7 @@ function Problem({ title, message }: { title: string; message: string }) {
     <main className="min-h-dvh grid place-items-center p-6">
       <div className="max-w-[440px] w-full">
         <div className="mb-8">
-          <Logo />
+          <Logo href="/student" />
         </div>
         <div className="card p-7">
           <h1 className="text-[22px] font-bold tracking-tight">{title}</h1>

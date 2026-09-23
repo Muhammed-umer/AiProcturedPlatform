@@ -80,13 +80,36 @@ upload are exercised for real without hardware. The synthetic feed contains no
 face, so face-flag *accuracy* is checked by hand (cover the camera during a dev
 run and watch the warning appear after the debounce), not by this suite.
 
-**Start from an empty database** so the accounts are on their defaults; the
-tests change the admin password as part of the flow:
+The suite cleans up after earlier runs itself (`e2e/global-setup.ts` removes
+only its own E2E/CRUD students, groups and tests), and signs in as the admin
+whether or not the first-login change has been made, so it can be run
+repeatedly on a development database:
 
 ```bash
-npm run db:reset && npm run db:push && npm run db:seed
 npm run test:e2e
 ```
+
+## Load test: 100 students at once
+
+`scripts/load` drives a production server exactly as 100 browsers would, over
+HTTP, through the same server actions: everyone opens the test and presses
+Continue in the same second, answers every few seconds, uploads a webcam frame
+every 15 s and syncs the clock every 20 s for the chosen duration, while an
+admin watches the live monitor; then everyone submits in the same second. It
+prints latency percentiles and errors per operation, and then checks the
+database to confirm the answers, grades and frames were really stored.
+
+```bash
+npm run build
+npx next start -p 3100                      # in a second terminal
+npx tsx scripts/load/setup.mts 100          # 100 LOAD students + a test
+npx tsx scripts/load/run.mts http://localhost:3100 90
+npx tsx scripts/load/cleanup.mts            # remove them again
+```
+
+Result on a laptop (100 students, 90 s): zero errors; opening the test about
+2 s, Continue about 1 s, saving an answer 38 ms typical, everyone submitting at
+once 0.7 s; 1,068 answers stored and graded, 100 live frames kept.
 
 Playwright's output folders (`test-results/`, `playwright-report/`) are
 git-ignored.

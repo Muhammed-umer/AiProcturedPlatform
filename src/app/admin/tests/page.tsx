@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { requireAdminPage } from "@/lib/session";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -9,11 +11,14 @@ import {
   groups,
   attempts,
 } from "@/db/schema";
-import { PageHeader, TableWrap, Badge, EmptyState } from "@/components/ui";
+import { PageHeader, TableWrap, StatusBadge, EmptyState } from "@/components/ui";
+
+export const metadata: Metadata = { title: "Tests" };
 
 export const dynamic = "force-dynamic";
 
 export default async function TestsPage() {
+  await requireAdminPage();
   const rows = await db
     .select({
       id: tests.id,
@@ -82,17 +87,7 @@ export default async function TestsPage() {
                 <tr key={t.id} className="hover:bg-brand-50/40 transition">
                   <td className="td font-semibold text-ink">{t.title}</td>
                   <td className="td">
-                    <Badge
-                      tone={
-                        t.status === "published"
-                          ? "good"
-                          : t.status === "closed"
-                            ? "neutral"
-                            : "warn"
-                      }
-                    >
-                      {t.status}
-                    </Badge>
+                    <StatusBadge status={t.status} />
                   </td>
                   <td className="td tabular-nums">{t.questionCount}</td>
                   <td className="td tabular-nums">{t.duration} min</td>

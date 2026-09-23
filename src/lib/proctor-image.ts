@@ -6,8 +6,10 @@ export function jpegResponse(base64: string): Response {
     headers: {
       "Content-Type": "image/jpeg",
       "Content-Length": String(bytes.byteLength),
-      // Always the newest frame; the monitor cache-busts the URL anyway.
-      "Cache-Control": "no-store",
+      // The monitor puts the frame's own timestamp in the URL, so a cached
+      // copy is never stale. "private" keeps it in the invigilator's browser
+      // only, never in anything shared between them and the server.
+      "Cache-Control": "private, max-age=300",
     },
   });
 }

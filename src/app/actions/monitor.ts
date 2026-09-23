@@ -11,7 +11,7 @@ import {
   violations,
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/session";
-import { submitAttempt } from "@/app/actions/attempt";
+import { finalizeAttempt } from "@/lib/exam-core";
 
 export interface LiveAttempt {
   attemptId: string;
@@ -24,14 +24,12 @@ export interface LiveAttempt {
   remainingMs: number;
   lastViolation: string | null;
   startedAt: string;
-  /** Whether a live webcam thumbnail exists for /api/proctor/[attemptId]/latest. */
-  hasSnapshot: boolean;
-  /** When that thumbnail was taken, ISO string, or null. */
-  snapshotAt: string | null;
-  /** Faces counted on that thumbnail, or null if detection was not running. */
-  faceCount: number | null;
-  /** Frames saved at camera violations, for the review page. */
-  flagCount: number;
+  /** False while the student is still on the instructions screen. */
+  begun: boolean;
+  /** Whether the end-of-test photo was received. */
+  hasPhoto: boolean;
+  /** Warnings raised by the camera (no face, several faces, turned away). */
+  cameraWarnings: number;
 }
 
 export interface LiveSnapshot {
@@ -71,6 +69,7 @@ export async function getLiveSnapshot(testId: string): Promise<LiveSnapshot> {
       warningCount: attempts.warningCount,
       deadlineAt: attempts.deadlineAt,
       startedAt: attempts.startedAt,
+      begunAt: attempts.begunAt,
       rollNumber: users.rollNumber,
       name: users.name,
       // Aliased columns: interpolated Drizzle columns render unqualified inside
@@ -88,21 +87,14 @@ export async function getLiveSnapshot(testId: string): Promise<LiveSnapshot> {
         where v.attempt_id = attempts.id
         order by v.occurred_at desc limit 1
       )`,
-      // Epoch milliseconds as a double so the driver hands back a number.
-      snapshotEpochMs: sql<number | null>`(
-        select (extract(epoch from ps.taken_at) * 1000)::double precision
-        from proctor_snapshots ps
-        where ps.attempt_id = attempts.id and ps.kind = 'latest'
-        limit 1
+      hasPhoto: sql<boolean>`exists (
+        select 1 from proctor_snapshots ps
+        where ps.attempt_id = attempts.id and ps.kind = 'final'
       )`,
-      faceCount: sql<number | null>`(
-        select ps.face_count from proctor_snapshots ps
-        where ps.attempt_id = attempts.id and ps.kind = 'latest'
-        limit 1
-      )`,
-      flagCount: sql<number>`(
-        select count(*)::int from proctor_snapshots ps
-        where ps.attempt_id = attempts.id and ps.kind = 'flagged'
+      cameraWarnings: sql<number>`(
+        select count(*)::int from violations v
+        where v.attempt_id = attempts.id
+          and v.type in ('no_face', 'multiple_faces', 'looking_away', 'camera_off')
       )`,
     })
     .from(attempts)
@@ -120,19 +112,16 @@ export async function getLiveSnapshot(testId: string): Promise<LiveSnapshot> {
     answeredCount: a.answeredCount,
     totalQuestions: total,
     warningCount: a.warningCount,
+    // Before Continue the deadline is only provisional; show nothing.
     remainingMs:
-      a.status === "in_progress"
+      a.status === "in_progress" && a.begunAt
         ? Math.max(0, a.deadlineAt.getTime() - now)
         : 0,
     lastViolation: a.lastViolation,
     startedAt: a.startedAt.toISOString(),
-    hasSnapshot: a.snapshotEpochMs !== null,
-    snapshotAt:
-      a.snapshotEpochMs !== null
-        ? new Date(Number(a.snapshotEpochMs)).toISOString()
-        : null,
-    faceCount: a.faceCount,
-    flagCount: a.flagCount,
+    begun: a.begunAt !== null,
+    hasPhoto: a.hasPhoto,
+    cameraWarnings: a.cameraWarnings,
   }));
 
   return {
@@ -152,5 +141,5 @@ export async function getLiveSnapshot(testId: string): Promise<LiveSnapshot> {
 export async function forceSubmit(formData: FormData): Promise<void> {
   await requireAdmin();
   const attemptId = String(formData.get("attemptId") ?? "");
-  if (attemptId) await submitAttempt(attemptId, "submitted");
+  if (attemptId) await finalizeAttempt(attemptId, "submitted");
 }

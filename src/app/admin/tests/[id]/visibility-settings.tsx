@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { updateTestVisibility, type AdminState } from "@/app/actions/admin";
-import { Alert } from "@/components/ui";
+import { Alert, CheckboxRow } from "@/components/ui";
 
 /**
  * What a student is allowed to see about their own attempt once they submit.
@@ -36,49 +36,19 @@ export function VisibilitySettings({
 
         <input type="hidden" name="testId" value={testId} />
 
-        <label
-          htmlFor="showScore"
-          className="flex items-start gap-3 cursor-pointer"
-        >
-          <input
-            id="showScore"
-            name="showScore"
-            type="checkbox"
-            defaultChecked={showScore}
-            className="mt-0.5 h-4.5 w-4.5 shrink-0 accent-brand-500 cursor-pointer"
-          />
-          <span className="min-w-0">
-            <span className="block text-[14px] font-semibold">
-              Show their score
-            </span>
-            <span className="block text-[12.5px] text-ink-2">
-              Marks, percentage and the section breakdown.
-            </span>
-          </span>
-        </label>
+        <CheckboxRow
+          name="showScore"
+          title="Show their score"
+          description="Marks, percentage and the section breakdown."
+          defaultChecked={showScore}
+        />
 
-        <label
-          htmlFor="showAnswers"
-          className="flex items-start gap-3 cursor-pointer"
-        >
-          <input
-            id="showAnswers"
-            name="showAnswers"
-            type="checkbox"
-            defaultChecked={showAnswers}
-            className="mt-0.5 h-4.5 w-4.5 shrink-0 accent-brand-500 cursor-pointer"
-          />
-          <span className="min-w-0">
-            <span className="block text-[14px] font-semibold">
-              Show which answers were right
-            </span>
-            <span className="block text-[12.5px] text-ink-2">
-              Question by question, with the correct answer. Turn this off if
-              more than one batch sits this test, or the first batch can pass
-              the answers on.
-            </span>
-          </span>
-        </label>
+        <CheckboxRow
+          name="showAnswers"
+          title="Show which answers were right"
+          description="Question by question, with the correct answer. Turn this off if more than one batch sits this test, or the first batch can pass the answers on."
+          defaultChecked={showAnswers}
+        />
 
         <button type="submit" className="btn-primary btn-sm" disabled={pending}>
           {pending ? "Saving…" : "Save"}

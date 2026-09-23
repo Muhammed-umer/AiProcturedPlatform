@@ -117,6 +117,14 @@ describe("gradeQuestion, several answers", () => {
     expect(r.awardedMarks).toBe(2);
   });
 
+  it("does not accept one correct option repeated as the full answer", () => {
+    const r = gradeQuestion(multiple, {
+      questionId: "q2",
+      selectedOptionIds: ["a", "a"],
+    });
+    expect(r.isCorrect).toBe(false);
+  });
+
   it("ignores the order options were selected in", () => {
     const r = gradeQuestion(multiple, {
       questionId: "q2",

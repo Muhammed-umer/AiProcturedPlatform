@@ -138,7 +138,8 @@ test.describe.serial("admin manages groups and tests", () => {
     await page.reload();
     await expect(sectionRow("Reasoning II")).toBeVisible();
 
-    // Delete.
+    // Delete, accepting the confirmation it asks for.
+    page.once("dialog", (d) => d.accept());
     await sectionRow("Reasoning II")
       .getByRole("button", { name: "Delete" })
       .click();
@@ -176,7 +177,8 @@ test.describe.serial("admin manages groups and tests", () => {
       page.getByText("Water freezes at ______ degrees Celsius"),
     ).toBeVisible();
 
-    // Delete the first, and only the first.
+    // Delete the first, and only the first, accepting the confirmation.
+    page.once("dialog", (d) => d.accept());
     await page
       .locator("li")
       .filter({ hasText: "Which planet is the largest?" })
@@ -315,6 +317,8 @@ test.describe.serial("admin manages groups and tests", () => {
 
     // The group knows it is in use before it goes.
     await expect(groupRow(page, GROUP_A)).toContainText("1 assigned");
+    // Deleting asks for confirmation first.
+    page.once("dialog", (d) => d.accept());
     await groupRow(page, GROUP_A)
       .getByRole("button", { name: "Delete" })
       .click();
@@ -336,6 +340,8 @@ test.describe.serial("admin manages groups and tests", () => {
     await page.goto(`/admin/tests/${testId}`);
 
     // The test's own Delete, not the one on the question still in the list.
+    // Deleting asks for confirmation first.
+    page.once("dialog", (d) => d.accept());
     await page
       .locator("form")
       .filter({ has: page.getByRole("button", { name: "Delete" }) })
@@ -346,6 +352,8 @@ test.describe.serial("admin manages groups and tests", () => {
     await expect(page.getByText(TEST_TITLE)).toHaveCount(0);
 
     await page.goto("/admin/groups");
+    // Deleting asks for confirmation first.
+    page.once("dialog", (d) => d.accept());
     await groupRow(page, GROUP_B)
       .getByRole("button", { name: "Delete" })
       .click();

@@ -1,11 +1,15 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/session";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { tests } from "@/db/schema";
-import { PageHeader } from "@/components/ui";
+import { BackLink, PageHeader } from "@/components/ui";
 import { getLiveSnapshot } from "@/app/actions/monitor";
 import { MonitorView } from "./monitor-view";
+
+export const metadata: Metadata = { title: "Live monitor" };
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +18,7 @@ export default async function MonitorPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdminPage();
   const { id } = await params;
 
   const [test] = await db.select().from(tests).where(eq(tests.id, id)).limit(1);
@@ -23,14 +28,7 @@ export default async function MonitorPage({
 
   return (
     <div className="fade-up">
-      <div className="mb-2">
-        <Link
-          href={`/admin/tests/${id}`}
-          className="text-[13.5px] text-ink-3 hover:text-ink"
-        >
-          &larr; Back to test
-        </Link>
-      </div>
+      <BackLink href={`/admin/tests/${id}`}>Back to test</BackLink>
 
       <PageHeader
         title={`Monitoring: ${test.title}`}

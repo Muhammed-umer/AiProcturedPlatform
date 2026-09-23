@@ -145,7 +145,7 @@ export async function importStudents(
       continue;
     }
 
-    const password = generateDefaultPassword(roll);
+    const password = generateDefaultPassword();
     const inserted = await db
       .insert(users)
       .values({
@@ -184,39 +184,70 @@ export async function importStudents(
   };
 }
 
-export async function resetStudentPassword(formData: FormData): Promise<void> {
-  await requireAdmin();
-  const userId = String(formData.get("userId") ?? "");
-  const rollNumber = String(formData.get("rollNumber") ?? "");
-  if (!userId) return;
+/** The state behind a "Reset password" button: the new password, once. */
+export interface ResetState {
+  password?: string;
+  error?: string;
+}
 
+/**
+ * Gives an account a fresh random password it must change on next sign-in,
+ * lifts any lockout, and signs it out everywhere.
+ */
+async function issueTemporaryPassword(userId: string): Promise<string> {
+  const password = generateDefaultPassword();
   await db
     .update(users)
     .set({
-      passwordHash: await hashPassword(generateDefaultPassword(rollNumber)),
+      passwordHash: await hashPassword(password),
       mustChangePassword: true,
+      failedAttempts: 0,
+      lockedUntil: null,
+      sessionVersion: sql`${users.sessionVersion} + 1`,
     })
-    .where(eq(users.id, userId));
-
-  revalidatePath("/admin/students");
+    .where(and(eq(users.id, userId), eq(users.role, "student")));
+  return password;
 }
 
-export async function resolveResetRequest(formData: FormData): Promise<void> {
+export async function resetStudentPassword(
+  _prev: ResetState,
+  formData: FormData,
+): Promise<ResetState> {
+  await requireAdmin();
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId) return { error: "Missing student" };
+
+  const password = await issueTemporaryPassword(userId);
+  revalidatePath("/admin/students");
+  return { password };
+}
+
+export async function resolveResetRequest(
+  _prev: ResetState,
+  formData: FormData,
+): Promise<ResetState> {
   const session = await requireAdmin();
   const requestId = String(formData.get("requestId") ?? "");
-  const userId = String(formData.get("userId") ?? "");
-  const rollNumber = String(formData.get("rollNumber") ?? "");
   const action = String(formData.get("decision") ?? "approved");
+  if (!requestId) return { error: "Missing request" };
 
-  if (action === "approved" && userId) {
-    await db
-      .update(users)
-      .set({
-        passwordHash: await hashPassword(generateDefaultPassword(rollNumber)),
-        mustChangePassword: true,
-      })
-      .where(eq(users.id, userId));
+  // The student comes from the request row, not from the form.
+  const [request] = await db
+    .select({
+      userId: passwordResetRequests.userId,
+      status: passwordResetRequests.status,
+    })
+    .from(passwordResetRequests)
+    .where(eq(passwordResetRequests.id, requestId))
+    .limit(1);
+  if (!request || request.status !== "pending") {
+    return { error: "This request has already been handled" };
   }
+
+  const password =
+    action === "approved"
+      ? await issueTemporaryPassword(request.userId)
+      : undefined;
 
   await db
     .update(passwordResetRequests)
@@ -228,6 +259,7 @@ export async function resolveResetRequest(formData: FormData): Promise<void> {
     .where(eq(passwordResetRequests.id, requestId));
 
   revalidatePath("/admin/requests");
+  return { password };
 }
 
 /* ------------------------------------------------------------ tests ---- */

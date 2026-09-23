@@ -1,15 +1,27 @@
 "use server";
 
-import { and, eq, desc } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { attempts, proctorSnapshots, tests, users } from "@/db/schema";
+import {
+  attempts,
+  proctorSnapshots,
+  tests,
+  users,
+  violations,
+} from "@/db/schema";
 import { requireStudent, requireAdmin } from "@/lib/session";
-
-export type SnapshotKind = "latest" | "flagged";
 
 // A 320x240 JPEG at moderate quality is 20-50 KB; base64 adds a third. Anything
 // past this is not a webcam frame from our exam page.
 const MAX_IMAGE_CHARS = 200_000;
+
+/**
+ * The photo is taken as the test ends, and the browser may only manage to
+ * send it a moment after the server has closed the attempt (a time-out or a
+ * termination closes it server-side first). This is how long after closing
+ * the photo is still accepted.
+ */
+const PHOTO_GRACE_MS = 2 * 60_000;
 
 function stripDataUrl(value: string): string {
   const marker = value.indexOf("base64,");
@@ -17,18 +29,20 @@ function stripDataUrl(value: string): string {
 }
 
 /**
- * Stores one webcam frame for the student's own in-progress attempt. Mirrors
- * saveAnswer: the student must own the attempt and it must still be running.
- * "latest" replaces the previous live thumbnail; "flagged" rows accumulate.
+ * Stores the one webcam photo kept per attempt: the frame captured as the
+ * student's test ends. Nothing is uploaded during the test itself; the
+ * camera's judgements arrive as named warnings through recordViolation.
+ * Mirrors saveAnswer: the student must own the attempt.
  */
-export async function uploadSnapshot(
+export async function uploadFinalPhoto(
   attemptId: string,
   image: string,
-  kind: SnapshotKind,
-  meta?: { flagType?: string; faceCount?: number },
 ): Promise<{ ok: boolean }> {
   const session = await requireStudent();
 
+  if (typeof attemptId !== "string" || typeof image !== "string") {
+    return { ok: false };
+  }
   const data = stripDataUrl(image);
   if (
     data.length === 0 ||
@@ -42,6 +56,8 @@ export async function uploadSnapshot(
     .select({
       id: attempts.id,
       status: attempts.status,
+      begunAt: attempts.begunAt,
+      submittedAt: attempts.submittedAt,
       cameraRequired: tests.cameraRequired,
     })
     .from(attempts)
@@ -49,43 +65,30 @@ export async function uploadSnapshot(
     .where(and(eq(attempts.id, attemptId), eq(attempts.userId, session.userId)))
     .limit(1);
 
-  if (!attempt || attempt.status !== "in_progress") return { ok: false };
-  // No webcam frames are kept for a test with the camera switched off.
-  if (!attempt.cameraRequired) return { ok: false };
-
-  const row = {
-    attemptId,
-    kind,
-    flagType: meta?.flagType ?? null,
-    faceCount: meta?.faceCount ?? null,
-    image: data,
-    takenAt: new Date(),
-  };
-
-  if (kind === "latest") {
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(proctorSnapshots)
-        .where(
-          and(
-            eq(proctorSnapshots.attemptId, attemptId),
-            eq(proctorSnapshots.kind, "latest"),
-          ),
-        );
-      await tx.insert(proctorSnapshots).values(row);
-    });
-  } else {
-    await db.insert(proctorSnapshots).values(row);
+  if (!attempt || !attempt.begunAt || !attempt.cameraRequired) {
+    return { ok: false };
   }
+  const closedFor =
+    attempt.status === "in_progress"
+      ? 0
+      : Date.now() - (attempt.submittedAt?.getTime() ?? 0);
+  if (closedFor > PHOTO_GRACE_MS) return { ok: false };
 
+  // One row per attempt, replaced in place. Safe if two sends cross.
+  await db
+    .insert(proctorSnapshots)
+    .values({ attemptId, kind: "final", image: data, takenAt: new Date() })
+    .onConflictDoUpdate({
+      target: proctorSnapshots.attemptId,
+      targetWhere: sql`kind = 'final'`,
+      set: { image: data, takenAt: new Date() },
+    });
   return { ok: true };
 }
 
-export interface FlaggedSnapshotMeta {
-  id: string;
-  flagType: string | null;
-  faceCount: number | null;
-  takenAt: string;
+export interface ReviewWarning {
+  type: string;
+  at: string;
 }
 
 export interface ProctorReview {
@@ -95,13 +98,16 @@ export interface ProctorReview {
   name: string;
   status: string;
   warningCount: number;
-  hasLatest: boolean;
-  flagged: FlaggedSnapshotMeta[];
+  /** Whether the end-of-test photo was received. */
+  hasPhoto: boolean;
+  photoAt: string | null;
+  /** Every warning, camera or otherwise, in the order it happened. */
+  warnings: ReviewWarning[];
 }
 
 /**
- * Everything the camera-review page needs except the images themselves, which
- * the browser fetches from the image routes so this stays small.
+ * Everything the review page needs except the photo itself, which the
+ * browser fetches from the image route so this stays small.
  */
 export async function getProctorReview(
   attemptId: string,
@@ -124,17 +130,22 @@ export async function getProctorReview(
 
   if (!attempt) return null;
 
-  const rows = await db
-    .select({
-      id: proctorSnapshots.id,
-      kind: proctorSnapshots.kind,
-      flagType: proctorSnapshots.flagType,
-      faceCount: proctorSnapshots.faceCount,
-      takenAt: proctorSnapshots.takenAt,
-    })
+  const [photo] = await db
+    .select({ takenAt: proctorSnapshots.takenAt })
     .from(proctorSnapshots)
-    .where(eq(proctorSnapshots.attemptId, attemptId))
-    .orderBy(desc(proctorSnapshots.takenAt));
+    .where(
+      and(
+        eq(proctorSnapshots.attemptId, attemptId),
+        eq(proctorSnapshots.kind, "final"),
+      ),
+    )
+    .limit(1);
+
+  const rows = await db
+    .select({ type: violations.type, at: violations.occurredAt })
+    .from(violations)
+    .where(eq(violations.attemptId, attemptId))
+    .orderBy(asc(violations.occurredAt));
 
   return {
     attemptId: attempt.id,
@@ -143,14 +154,8 @@ export async function getProctorReview(
     name: attempt.name,
     status: attempt.status,
     warningCount: attempt.warningCount,
-    hasLatest: rows.some((r) => r.kind === "latest"),
-    flagged: rows
-      .filter((r) => r.kind === "flagged")
-      .map((r) => ({
-        id: r.id,
-        flagType: r.flagType,
-        faceCount: r.faceCount,
-        takenAt: r.takenAt.toISOString(),
-      })),
+    hasPhoto: Boolean(photo),
+    photoAt: photo?.takenAt.toISOString() ?? null,
+    warnings: rows.map((r) => ({ type: r.type, at: r.at.toISOString() })),
   };
 }

@@ -61,7 +61,7 @@ export async function GET(
   const byUser = new Map(attemptRows.map((a) => [a.userId, a]));
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = "Placement Test Platform";
+  wb.creator = "PRISM, GCEE";
 
   /* -------------------------------------------------------- rank list */
 
@@ -151,6 +151,12 @@ export async function GET(
           .where(inArray(answers.attemptId, attemptIds))
       : [];
 
+  // One map lookup per answer instead of a scan of every answer: with a full
+  // batch and a long paper the scans ran to tens of millions of comparisons.
+  const answerByKey = new Map(
+    answerRows.map((r) => [`${r.attemptId}:${r.questionId}`, r]),
+  );
+
   const sectionScoreRows = [];
   for (const attempt of attemptRows) {
     for (const section of sectionRows) {
@@ -166,9 +172,7 @@ export async function GET(
         0,
       );
       const earned = qs.reduce((t, q) => {
-        const a = answerRows.find(
-          (r) => r.attemptId === attempt.id && r.questionId === q.id,
-        );
+        const a = answerByKey.get(`${attempt.id}:${q.id}`);
         return t + (a?.awardedMarks ? Number(a.awardedMarks) : 0);
       }, 0);
 
@@ -212,6 +216,8 @@ export async function GET(
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${safeName}-results.xlsx"`,
+      // Marks and names: never kept in a shared or browser cache.
+      "Cache-Control": "no-store",
     },
   });
 }

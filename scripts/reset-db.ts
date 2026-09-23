@@ -36,6 +36,30 @@ if (process.env.NODE_ENV === "production") {
 // The cascade drop emits a NOTICE listing dependent objects; not useful here.
 const sql = postgres(url, { max: 1, onnotice: () => {} });
 
+/**
+ * NODE_ENV is not set in a plain shell on the lab server, so it cannot be
+ * the only thing standing between a typo and a wiped exam database. Refuse
+ * whenever the database already holds submitted tests, unless --force.
+ */
+if (!process.argv.includes("--force")) {
+  let submitted = 0;
+  try {
+    const [row] = await sql<{ n: number }[]>`
+      select count(*)::int as n from attempts where status <> 'in_progress'`;
+    submitted = row.n;
+  } catch {
+    // No attempts table yet: an empty database, nothing to protect.
+  }
+  if (submitted > 0) {
+    console.error(
+      `Refusing to reset: the database holds ${submitted} submitted attempt(s).\n` +
+        "If this really is a development database, run: npm run db:reset -- --force",
+    );
+    await sql.end();
+    process.exit(1);
+  }
+}
+
 try {
   await sql.unsafe("drop schema public cascade; create schema public;");
   console.log("Database emptied. Now run: npm run db:push && npm run db:seed");

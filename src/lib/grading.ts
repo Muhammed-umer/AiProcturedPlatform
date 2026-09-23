@@ -67,11 +67,16 @@ function correctOptionIds(q: GradableQuestion): string[] {
   return (q.options ?? []).filter((o) => o.isCorrect).map((o) => o.id);
 }
 
-/** True when both sides contain exactly the same ids, order ignored. */
+/**
+ * True when both sides contain exactly the same ids, order ignored.
+ * Compared as sets, so a hand-crafted answer that repeats one correct id
+ * ["A", "A"] cannot pass for the full answer ["A", "B"].
+ */
 function sameIdSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
+  const setA = new Set(a);
   const setB = new Set(b);
-  for (const id of a) if (!setB.has(id)) return false;
+  if (setA.size !== setB.size) return false;
+  for (const id of setA) if (!setB.has(id)) return false;
   return true;
 }
 

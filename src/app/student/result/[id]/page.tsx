@@ -1,5 +1,6 @@
+import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -13,6 +14,8 @@ import {
 import { requireStudent } from "@/lib/session";
 import { PageHeader, StatCard, Alert, TableWrap } from "@/components/ui";
 import { AnswerReview } from "./answer-review";
+
+export const metadata: Metadata = { title: "Your result" };
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,9 @@ export default async function StudentResultPage({
     .limit(1);
 
   if (!attempt) notFound();
+  // The review below carries the answer key. While the attempt is open it
+  // must not be reachable, from a second tab or a phone signed in alongside.
+  if (attempt.status === "in_progress") redirect(`/student/test/${attempt.testId}`);
 
   const [test] = await db
     .select()

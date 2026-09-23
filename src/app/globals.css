@@ -14,11 +14,18 @@
 
   --color-ink: #1a1915;
   --color-ink-2: #57544b;
-  --color-ink-3: #8b8779;
+  /* Dark enough for small text on white and canvas (WCAG AA, 4.5:1). */
+  --color-ink-3: #6f6b5e;
   --color-line: #e8e5db;
   --color-line-2: #d4d0c2;
   --color-canvas: #fbfaf6;
   --color-panel: #ffffff;
+
+  /* Tamil script, from fonts shipped with Windows and common Linux installs.
+     The lab is offline, so nothing is downloaded. */
+  --font-tamil: "Nirmala UI", "Latha", "Noto Sans Tamil", sans-serif;
+  /* Used only for the PRISM wordmark, so it stays distinct from the UI. */
+  --font-display: var(--font-sora), "Segoe UI", system-ui, sans-serif;
 }
 
 :root {
@@ -38,6 +45,15 @@ body {
 body {
   font-family: var(--font-inter), "Segoe UI", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* One visible focus ring for everything keyboard-reachable. In the base layer
+   so a component that draws its own focus style, like .input, still wins. */
+@layer base {
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-brand-700);
+    outline-offset: 2px;
+  }
 }
 
 /* --------------------------------------------------------- components --
@@ -212,6 +228,27 @@ body {
   .exam-locked * {
     display: none !important;
   }
+}
+
+/* -------------------------------------------------------------- kolam --
+   The house signature: a pulli kolam's dot lattice, two offset grids of
+   fine dots. Used sparingly, on brand surfaces and empty states, and never
+   on the exam screen. `.kolam-fade` softens it out towards one corner.
+   -------------------------------------------------------------------- */
+
+.kolam {
+  --kolam-dot: rgb(26 25 21 / 0.13);
+  background-image:
+    radial-gradient(circle, var(--kolam-dot) 1.1px, transparent 1.6px),
+    radial-gradient(circle, var(--kolam-dot) 1.1px, transparent 1.6px);
+  background-size: 22px 22px;
+  background-position:
+    0 0,
+    11px 11px;
+}
+
+.kolam-fade {
+  mask-image: radial-gradient(ellipse at top right, #000 10%, transparent 70%);
 }
 
 /* --------------------------------------------------------------- misc -- */

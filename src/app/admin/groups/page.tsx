@@ -1,13 +1,25 @@
+import type { Metadata } from "next";
 import { sql, eq } from "drizzle-orm";
+import { requireAdminPage } from "@/lib/session";
 import { db } from "@/db";
 import { groups, groupMembers, testGroups } from "@/db/schema";
-import { PageHeader, TableWrap, EmptyState, Badge } from "@/components/ui";
+import {
+  PageHeader,
+  TableWrap,
+  EmptyState,
+  Badge,
+  ConfirmForm,
+  SubmitButton,
+} from "@/components/ui";
 import { deleteGroup } from "@/app/actions/admin";
 import { NewGroupForm } from "./new-group-form";
+
+export const metadata: Metadata = { title: "Groups" };
 
 export const dynamic = "force-dynamic";
 
 export default async function GroupsPage() {
+  await requireAdminPage();
   const rows = await db
     .select({
       id: groups.id,
@@ -75,12 +87,22 @@ export default async function GroupsPage() {
                         )}
                       </td>
                       <td className="td text-right">
-                        <form action={deleteGroup}>
+                        <ConfirmForm
+                          action={deleteGroup}
+                          confirm={`Delete the group "${g.name}"? Its students keep their accounts.${
+                            g.testCount > 0
+                              ? ` The ${g.testCount === 1 ? "test" : `${g.testCount} tests`} assigned to it will no longer be open to this group.`
+                              : ""
+                          }`}
+                        >
                           <input type="hidden" name="groupId" value={g.id} />
-                          <button className="btn-danger btn-sm" type="submit">
+                          <SubmitButton
+                            className="btn-danger btn-sm"
+                            pendingText="Deleting…"
+                          >
                             Delete
-                          </button>
-                        </form>
+                          </SubmitButton>
+                        </ConfirmForm>
                       </td>
                     </tr>
                   ))}

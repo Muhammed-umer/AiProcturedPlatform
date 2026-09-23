@@ -20,8 +20,8 @@ npm run db:seed           # first admin account + demo data
 npm run dev               # http://localhost:3000
 ```
 
-Sign in as `ADMIN` / `Admin@123` (you will be asked to change it), or as a demo
-student such as `21CS001` / `Test@S001`.
+Sign in as `admin` / `admin`, or as the demo student `user` / `user`. Imported
+students get a random password such as `KPRT-4829`, shown once to the admin.
 
 ---
 
@@ -34,6 +34,7 @@ student such as `21CS001` / `Test@S001`.
 | `npm run db:push` | Apply the Drizzle schema to the database |
 | `npm run db:seed` | Create the first admin and demo data |
 | `npm run db:reset` | Empty the development database (then push and seed again) |
+| `npx tsx scripts/load/setup.mts 100` then `run.mts` | Load test: 100 students sitting at once (see docs/testing.md) |
 | `npm test` | Unit tests (Vitest) |
 | `npm run test:e2e` | End-to-end tests (Playwright) |
 

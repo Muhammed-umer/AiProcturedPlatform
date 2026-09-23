@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Sora } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
@@ -8,10 +8,22 @@ const inter = Inter({
   display: "swap",
 });
 
+// The display face, used only for the PRISM wordmark.
+const display = Sora({
+  subsets: ["latin"],
+  weight: ["800"],
+  variable: "--font-display",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Placement Test Platform",
+  // Pages set their own short title; the app name follows it in the tab.
+  title: {
+    template: "%s · PRISM",
+    default: "PRISM · Placement Readiness & Integrated Skill Measurement",
+  },
   description:
-    "Departmental online examination system with proctored, timed tests.",
+    "PRISM: Placement Readiness & Integrated Skill Measurement. Camera-proctored placement tests for Government College of Engineering, Erode, run on the college network.",
 };
 
 export default function RootLayout({
@@ -20,7 +32,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={`${inter.variable} ${display.variable}`}>
       <body>{children}</body>
     </html>
   );

@@ -11,7 +11,7 @@ export function NewGroupForm() {
   );
 
   return (
-    <div className="card p-5 lg:sticky lg:top-32">
+    <div className="card p-5 lg:sticky lg:top-6">
       <h2 className="font-bold text-[16px] mb-1">New group</h2>
       <p className="text-[13.5px] text-ink-2 mb-4">
         Name it after the batch or section, for example CSE 2021 Batch.

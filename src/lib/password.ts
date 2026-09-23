@@ -1,16 +1,17 @@
-import bcrypt from "bcryptjs";
+import { bcryptHash, bcryptCompare } from "@/lib/bcrypt-pool";
+import { randomInt } from "node:crypto";
 
 const ROUNDS = 10;
 
 export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, ROUNDS);
+  return bcryptHash(plain, ROUNDS);
 }
 
 export async function verifyPassword(
   plain: string,
   hash: string,
 ): Promise<boolean> {
-  return bcrypt.compare(plain, hash);
+  return bcryptCompare(plain, hash);
 }
 
 /** Security answers are compared case-insensitively and whitespace-trimmed. */
@@ -19,14 +20,14 @@ export function normalizeSecurityAnswer(answer: string): string {
 }
 
 export async function hashSecurityAnswer(answer: string): Promise<string> {
-  return bcrypt.hash(normalizeSecurityAnswer(answer), ROUNDS);
+  return bcryptHash(normalizeSecurityAnswer(answer), ROUNDS);
 }
 
 export async function verifySecurityAnswer(
   answer: string,
   hash: string,
 ): Promise<boolean> {
-  return bcrypt.compare(normalizeSecurityAnswer(answer), hash);
+  return bcryptCompare(normalizeSecurityAnswer(answer), hash);
 }
 
 export interface PasswordCheck {
@@ -51,16 +52,32 @@ export function checkPasswordStrength(password: string): PasswordCheck {
   return { ok: true };
 }
 
+// No 0/O, 1/I/L: these are read off a printed slip onto a lab keyboard.
+const LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ";
+const DIGITS = "23456789";
+
 /**
- * Readable default password for a freshly imported student.
+ * A fresh random password for a new or reset account, such as "KPRT-4829".
  *
- * The tail is padded so a very short roll number still clears the minimum
- * length above. Without this, a roll number like "A1" produces a password the
- * student is immediately told is too weak to reuse.
+ * It used to be derived from the roll number, which meant anyone who knew a
+ * classmate's roll number could sign in as them before they did. Now it is
+ * shown once to the admin, printed, and changed on first sign-in.
  */
-export function generateDefaultPassword(rollNumber: string): string {
-  const cleaned = rollNumber.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-  const tail = cleaned.slice(-4);
-  const padded = tail === "" ? "1234" : tail.padStart(4, "0");
-  return `Test@${padded}`;
+export function generateDefaultPassword(): string {
+  const pick = (set: string, n: number) =>
+    Array.from({ length: n }, () => set[randomInt(set.length)]).join("");
+  return `${pick(LETTERS, 4)}-${pick(DIGITS, 4)}`;
 }
+
+/** Sign-in and reset attempts allowed before the account pauses. */
+export const MAX_FAILED_ATTEMPTS = 8;
+/** How long the pause lasts. Short, so a prank lockout costs minutes. */
+export const LOCKOUT_MINUTES = 5;
+
+/**
+ * Compared against when the roll number does not exist, so a wrong roll
+ * number takes as long to reject as a wrong password and the timing does not
+ * reveal which roll numbers are real.
+ */
+export const DUMMY_HASH =
+  "$2a$10$KeVv4AmdmWH.oebAoOPWn.fzBjOxDlzlcIZkX7mxcVnldx747w1Ha";

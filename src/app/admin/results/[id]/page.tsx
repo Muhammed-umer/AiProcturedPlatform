@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+import { requireAdminPage } from "@/lib/session";
 import { notFound } from "next/navigation";
 import { eq, inArray, and, ne } from "drizzle-orm";
 import { db } from "@/db";
@@ -22,11 +24,15 @@ import {
 } from "@/lib/analytics";
 import {
   PageHeader,
+  BackLink,
+  SectionTitle,
   StatCard,
   TableWrap,
   Badge,
   EmptyState,
 } from "@/components/ui";
+
+export const metadata: Metadata = { title: "Test results" };
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +41,7 @@ export default async function TestAnalysisPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdminPage();
   const { id } = await params;
 
   const [test] = await db.select().from(tests).where(eq(tests.id, id)).limit(1);
@@ -123,6 +130,12 @@ export default async function TestAnalysisPage({
           .where(inArray(answers.attemptId, attemptIds))
       : [];
 
+  // One map lookup per answer instead of a scan of every answer: with a full
+  // batch and a long paper the scans ran to tens of millions of comparisons.
+  const answerByKey = new Map(
+    answerRows.map((r) => [`${r.attemptId}:${r.questionId}`, r]),
+  );
+
   // Per-student, per-section scores feeding the topic-wise averages.
   const sectionScoreRows: SectionScoreRow[] = [];
 
@@ -141,9 +154,7 @@ export default async function TestAnalysisPage({
       );
 
       const earned = qs.reduce((sum, q) => {
-        const a = answerRows.find(
-          (r) => r.attemptId === attempt.id && r.questionId === q.id,
-        );
+        const a = answerByKey.get(`${attempt.id}:${q.id}`);
         return sum + (a?.awardedMarks ? Number(a.awardedMarks) : 0);
       }, 0);
 
@@ -167,9 +178,7 @@ export default async function TestAnalysisPage({
   const outcomes: QuestionOutcome[] = [];
   for (const attempt of attemptRows) {
     for (const q of questionRows) {
-      const a = answerRows.find(
-        (r) => r.attemptId === attempt.id && r.questionId === q.id,
-      );
+      const a = answerByKey.get(`${attempt.id}:${q.id}`);
       outcomes.push({
         questionId: q.id,
         isCorrect: a?.isCorrect === true,
@@ -183,14 +192,7 @@ export default async function TestAnalysisPage({
 
   return (
     <div className="fade-up">
-      <div className="mb-2">
-        <Link
-          href="/admin/results"
-          className="text-[13.5px] text-ink-3 hover:text-ink"
-        >
-          &larr; All results
-        </Link>
-      </div>
+      <BackLink href="/admin/results">All results</BackLink>
 
       <PageHeader
         title={test.title}
@@ -253,9 +255,7 @@ export default async function TestAnalysisPage({
       {/* Topic-wise */}
       {bySection.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-[17px] font-bold tracking-tight mb-1">
-            Topic-wise performance
-          </h2>
+          <SectionTitle className="mb-1">Topic-wise performance</SectionTitle>
           <p className="text-[14px] text-ink-2 mb-3 max-w-[62ch]">
             Class average per section. A low bar shows a topic the batch needs
             more work on.
@@ -299,7 +299,7 @@ export default async function TestAnalysisPage({
 
       {/* Rank list */}
       <section className="mb-8">
-        <h2 className="text-[17px] font-bold tracking-tight mb-3">Rank list</h2>
+        <SectionTitle>Rank list</SectionTitle>
         <TableWrap>
           <table className="w-full">
             <thead className="bg-canvas border-b border-line">
@@ -353,9 +353,7 @@ export default async function TestAnalysisPage({
 
       {/* Question difficulty */}
       <section>
-        <h2 className="text-[17px] font-bold tracking-tight mb-1">
-          Question analysis
-        </h2>
+        <SectionTitle className="mb-1">Question analysis</SectionTitle>
         <p className="text-[14px] text-ink-2 mb-3 max-w-[62ch]">
           How many students answered each question correctly. A question almost
           nobody gets right is often a badly worded one.
@@ -387,17 +385,11 @@ export default async function TestAnalysisPage({
                         <span className="tabular-nums font-medium text-ink w-14">
                           {stat?.correctCount ?? 0}/{stat?.totalResponses ?? 0}
                         </span>
-                        <span
-                          className={`chip ${
-                            pct >= 60
-                              ? "bg-emerald-100 text-emerald-800"
-                              : pct >= 30
-                                ? "bg-brand-100 text-brand-800"
-                                : "bg-red-100 text-red-800"
-                          }`}
+                        <Badge
+                          tone={pct >= 60 ? "good" : pct >= 30 ? "brand" : "bad"}
                         >
                           {pct}%
-                        </span>
+                        </Badge>
                       </div>
                     </td>
                   </tr>

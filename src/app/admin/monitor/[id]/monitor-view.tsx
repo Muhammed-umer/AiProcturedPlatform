@@ -2,13 +2,21 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { VIOLATION_LABEL, CAMERA_VIOLATIONS as CAMERA_TYPES } from "@/lib/violation-labels";
 import {
   getLiveSnapshot,
   forceSubmit,
   type LiveSnapshot,
   type LiveAttempt,
 } from "@/app/actions/monitor";
-import { StatCard, Badge, Tooltip } from "@/components/ui";
+import {
+  StatCard,
+  Badge,
+  Tooltip,
+  TableWrap,
+  SectionTitle,
+  ConfirmForm,
+} from "@/components/ui";
 
 function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -17,18 +25,21 @@ function clock(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-const VIOLATION_LABEL: Record<string, string> = {
-  tab_switch: "Switched tab",
-  window_blur: "Lost focus",
-  fullscreen_exit: "Left full screen",
-  copy_paste: "Copy or paste",
-  devtools: "Developer tools",
-  print_screen: "Screenshot",
-  no_face: "Face not visible",
-  multiple_faces: "More than one person",
-  looking_away: "Turned away from screen",
-  camera_off: "Camera turned off",
-};
+type Filter = "all" | "warnings" | "ready";
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "warnings", label: "Warnings" },
+  { value: "ready", label: "Getting ready" },
+];
+
+/** Whether an attempt passes the chosen chip, before the text search. */
+function inFilter(a: LiveAttempt, filter: Filter): boolean {
+  if (filter === "warnings") return a.warningCount > 0;
+  if (filter === "ready") return a.status === "in_progress" && !a.begun;
+  return true;
+}
+
 
 export function MonitorView({
   testId,
@@ -59,12 +70,33 @@ export function MonitorView({
   }, [live, refresh]);
 
   const rows = snapshot.attempts;
-  const inProgress = rows.filter((a) => a.status === "in_progress");
+
+  // Search and filter only narrow what is drawn; polling is untouched.
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
+  const needle = query.trim().toLowerCase();
+  const shown = rows.filter(
+    (a) =>
+      inFilter(a, filter) &&
+      (!needle ||
+        a.name.toLowerCase().includes(needle) ||
+        a.rollNumber.toLowerCase().includes(needle)),
+  );
+  const inProgress = shown.filter((a) => a.status === "in_progress");
+  const narrowed = filter !== "all" || needle !== "";
+
+  const updatedAt = new Date(snapshot.serverNow).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZone: "Asia/Kolkata",
+  });
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
             className={`inline-block h-2.5 w-2.5 rounded-full ${
               live ? "bg-emerald-500 animate-pulse" : "bg-ink-3"
@@ -74,6 +106,9 @@ export function MonitorView({
             {live
               ? "Live, refreshing every 5 seconds"
               : "Paused, this page is not updating"}
+          </span>
+          <span className="text-[12.5px] text-ink-3 tabular-nums">
+            &middot; Last updated {updatedAt}
           </span>
           {!cameraRequired && <Badge tone="warn">Camera proctoring off</Badge>}
         </div>
@@ -100,7 +135,7 @@ export function MonitorView({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-7">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
         <StatCard
           label="Writing now"
           value={snapshot.inProgress}
@@ -119,15 +154,64 @@ export function MonitorView({
         </div>
       ) : (
         <>
+          {/* Narrowing the lists down, for a lab of a hundred */}
+          <div className="flex flex-wrap items-center gap-3 mb-5">
+            <label htmlFor="monitor-search" className="sr-only">
+              Search by name or roll number
+            </label>
+            <input
+              id="monitor-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search name or roll number"
+              className="input max-w-[280px] py-2 text-[14px]"
+              autoComplete="off"
+            />
+            <div
+              role="group"
+              aria-label="Show"
+              className="flex flex-wrap gap-1.5"
+            >
+              {FILTERS.map((f) => {
+                const count = rows.filter((a) => inFilter(a, f.value)).length;
+                const on = filter === f.value;
+                return (
+                  <button
+                    key={f.value}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setFilter(f.value)}
+                    className={`chip border transition ${
+                      on
+                        ? "border-ink bg-ink text-white"
+                        : "border-line-2 bg-white text-ink-2 hover:border-brand-300 hover:bg-brand-50"
+                    }`}
+                  >
+                    {f.label}
+                    <span
+                      className={`tabular-nums ${on ? "text-white/70" : "text-ink-3"}`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {narrowed && (
+              <span className="text-[12.5px] text-ink-3 tabular-nums">
+                Showing {shown.length} of {rows.length}
+              </span>
+            )}
+          </div>
+
           {/* In-progress students first, as a live grid */}
           {inProgress.length > 0 && (
             <div className="mb-7">
-              <h2 className="text-[15px] font-bold tracking-tight mb-3">
-                In progress
-              </h2>
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <SectionTitle count={inProgress.length}>In progress</SectionTitle>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                 {inProgress.map((a) => {
-                  const lowTime = a.remainingMs <= 60_000;
+                  const lowTime = a.begun && a.remainingMs <= 60_000;
                   const pct =
                     a.totalQuestions > 0
                       ? Math.round((a.answeredCount / a.totalQuestions) * 100)
@@ -143,13 +227,6 @@ export function MonitorView({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
-                          {cameraRequired && (
-                            <ProctorThumb
-                              attempt={a}
-                              stamp={snapshot.serverNow}
-                              size="card"
-                            />
-                          )}
                           <div className="min-w-0">
                             <div className="font-semibold text-[14.5px] truncate">
                               {a.name}
@@ -166,7 +243,7 @@ export function MonitorView({
                               : "bg-brand-100 text-brand-900"
                           }`}
                         >
-                          {clock(a.remainingMs)}
+                          {a.begun ? clock(a.remainingMs) : "Getting ready"}
                         </div>
                       </div>
 
@@ -197,31 +274,34 @@ export function MonitorView({
                           </span>
                         )}
                         <div className="flex items-center gap-1.5">
-                          {cameraRequired && (
-                            <Tooltip label="See this student's webcam and every moment the camera flagged.">
-                              <Link
-                                href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
-                                className="btn-ghost btn-sm"
-                              >
-                                Camera
-                                {a.flagCount > 0 ? ` (${a.flagCount})` : ""}
-                              </Link>
-                            </Tooltip>
-                          )}
+                          <Tooltip label="Every warning by name and time, and the photo taken as the test ends.">
+                            <Link
+                              href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
+                              className="btn-ghost btn-sm"
+                            >
+                              Warnings
+                              {a.cameraWarnings > 0
+                                ? ` (${a.cameraWarnings} camera)`
+                                : ""}
+                            </Link>
+                          </Tooltip>
                           <Tooltip label="Finish this student's test now and mark it. They cannot go back in.">
-                            <form action={forceSubmit}>
+                            <ConfirmForm
+                              action={forceSubmit}
+                              confirm={`End the test for ${a.name} (${a.rollNumber}) now? It is submitted and marked as it stands, and they cannot go back in.`}
+                            >
                               <input
                                 type="hidden"
                                 name="attemptId"
                                 value={a.attemptId}
                               />
                               <button
-                                className="btn-ghost btn-sm"
+                                className="btn-danger btn-sm"
                                 type="submit"
                               >
                                 End
                               </button>
-                            </form>
+                            </ConfirmForm>
                           </Tooltip>
                         </div>
                       </div>
@@ -240,11 +320,13 @@ export function MonitorView({
           )}
 
           {/* Full table of everyone */}
-          <h2 className="text-[15px] font-bold tracking-tight mb-3">
-            All attempts
-          </h2>
-          <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
+          <SectionTitle count={shown.length}>All attempts</SectionTitle>
+          {shown.length === 0 ? (
+            <div className="card p-8 text-center text-[14.5px] text-ink-2">
+              No students match. Clear the search or choose All.
+            </div>
+          ) : (
+            <TableWrap>
               <table className="w-full">
                 <thead className="bg-canvas border-b border-line">
                   <tr>
@@ -253,12 +335,12 @@ export function MonitorView({
                     <th className="th">Status</th>
                     <th className="th">Progress</th>
                     <th className="th">Warnings</th>
-                    {cameraRequired && <th className="th">Camera</th>}
+                    <th className="th">Camera</th>
                     <th className="th">Time left</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {rows.map((a) => (
+                  {shown.map((a) => (
                     <tr key={a.attemptId}>
                       <td className="td font-semibold text-ink tabular-nums">
                         {a.rollNumber}
@@ -287,29 +369,41 @@ export function MonitorView({
                           <span className="text-ink-3">&mdash;</span>
                         )}
                       </td>
-                      {cameraRequired && (
-                        <td className="td">
-                          <Link
-                            href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
-                            className="flex items-center gap-2 group"
-                            title="Open camera review"
-                          >
-                            <ProctorThumb
-                              attempt={a}
-                              stamp={snapshot.serverNow}
-                              size="row"
-                            />
-                            {a.flagCount > 0 && (
-                              <span className="text-[12px] font-semibold text-red-700 tabular-nums">
-                                {a.flagCount} flagged
-                              </span>
-                            )}
-                          </Link>
-                        </td>
-                      )}
+                      <td className="td">
+                        <Link
+                          href={`/admin/monitor/${testId}/proctor/${a.attemptId}`}
+                          className="inline-flex flex-col gap-0.5 rounded text-[13px] hover:underline"
+                          title="Open the warnings review"
+                        >
+                          {!cameraRequired ? (
+                            <span className="text-ink-3">Camera off</span>
+                          ) : a.lastViolation &&
+                            CAMERA_TYPES.has(a.lastViolation) ? (
+                            <span className="font-semibold text-red-700">
+                              {VIOLATION_LABEL[a.lastViolation]}
+                            </span>
+                          ) : a.cameraWarnings > 0 ? (
+                            <span className="text-red-700">
+                              {a.cameraWarnings} camera warning
+                              {a.cameraWarnings === 1 ? "" : "s"}
+                            </span>
+                          ) : (
+                            <span className="text-ink-2">Clear</span>
+                          )}
+                          {a.status !== "in_progress" && (
+                            <span className="text-[12px] text-ink-3">
+                              {a.hasPhoto ? "Photo received" : "No photo"}
+                            </span>
+                          )}
+                        </Link>
+                      </td>
                       <td className="td tabular-nums">
                         {a.status === "in_progress" ? (
-                          clock(a.remainingMs)
+                          a.begun ? (
+                            clock(a.remainingMs)
+                          ) : (
+                            <span className="text-ink-3">Getting ready</span>
+                          )
                         ) : (
                           <span className="text-ink-3">&mdash;</span>
                         )}
@@ -318,58 +412,9 @@ export function MonitorView({
                   ))}
                 </tbody>
               </table>
-            </div>
-          </div>
+            </TableWrap>
+          )}
         </>
-      )}
-    </div>
-  );
-}
-
-/**
- * The student's latest webcam frame. The `stamp` changes on every poll, which
- * busts the browser cache so the image refreshes with the rest of the page.
- */
-function ProctorThumb({
-  attempt,
-  stamp,
-  size,
-}: {
-  attempt: LiveAttempt;
-  stamp: number;
-  size: "card" | "row";
-}) {
-  const dims = size === "card" ? "h-14 w-[76px]" : "h-9 w-12";
-
-  if (!attempt.hasSnapshot) {
-    return (
-      <div
-        className={`${dims} shrink-0 rounded-md border border-dashed border-line-2 bg-canvas grid place-items-center text-[10px] leading-tight text-ink-3 text-center`}
-      >
-        No camera
-      </div>
-    );
-  }
-
-  const faceNote =
-    attempt.faceCount === 0
-      ? "No face"
-      : attempt.faceCount !== null && attempt.faceCount > 1
-        ? `${attempt.faceCount} faces`
-        : null;
-
-  return (
-    <div className="relative shrink-0">
-      {/* eslint-disable-next-line @next/next/no-img-element -- dynamic, auth-gated frame */}
-      <img
-        src={`/api/proctor/${attempt.attemptId}/latest?t=${stamp}`}
-        alt={`Latest webcam frame for ${attempt.rollNumber}`}
-        className={`${dims} rounded-md border border-line bg-ink object-cover`}
-      />
-      {faceNote && size === "card" && (
-        <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-red-600 px-1.5 text-[10px] font-bold text-white">
-          {faceNote}
-        </span>
       )}
     </div>
   );

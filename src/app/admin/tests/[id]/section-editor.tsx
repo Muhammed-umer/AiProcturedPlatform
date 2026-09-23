@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Section } from "@/db/schema";
 import { addSection, updateSection, deleteSection } from "@/app/actions/admin";
+import { SubmitButton, ConfirmForm } from "@/components/ui";
 
 /**
  * Sections carry the default marks for their questions and the topic label
@@ -38,9 +39,13 @@ export function SectionEditor({
 
       {adding && (
         <form
-          action={addSection}
+          // Closed once the section is saved, so the button can show progress
+          // and the new row is already in the list when the form goes.
+          action={async (formData) => {
+            await addSection(formData);
+            setAdding(false);
+          }}
           className="mb-4 rounded-lg border border-brand-300 bg-brand-50 p-4 grid sm:grid-cols-2 gap-3"
-          onSubmit={() => setAdding(false)}
         >
           <input type="hidden" name="testId" value={testId} />
           <div>
@@ -81,9 +86,9 @@ export function SectionEditor({
             />
           </div>
           <div className="sm:col-span-2">
-            <button type="submit" className="btn-primary btn-sm">
+            <SubmitButton className="btn-primary btn-sm" pendingText="Adding…">
               Add section
-            </button>
+            </SubmitButton>
           </div>
         </form>
       )}
@@ -93,8 +98,10 @@ export function SectionEditor({
           editingId === s.id ? (
             <form
               key={s.id}
-              action={updateSection}
-              onSubmit={() => setEditingId(null)}
+              action={async (formData) => {
+                await updateSection(formData);
+                setEditingId(null);
+              }}
               className="rounded-lg border border-brand-300 bg-brand-50 p-4 grid sm:grid-cols-2 gap-3"
             >
               <input type="hidden" name="testId" value={testId} />
@@ -141,9 +148,9 @@ export function SectionEditor({
                 />
               </div>
               <div className="sm:col-span-2 flex gap-2">
-                <button type="submit" className="btn-primary btn-sm">
+                <SubmitButton className="btn-primary btn-sm" pendingText="Saving…">
                   Save
-                </button>
+                </SubmitButton>
                 <button
                   type="button"
                   className="btn-ghost btn-sm"
@@ -183,13 +190,19 @@ export function SectionEditor({
                   Edit
                 </button>
                 {sections.length > 1 && (
-                  <form action={deleteSection}>
+                  <ConfirmForm
+                    action={deleteSection}
+                    confirm={`Delete the section "${s.name}" and every question in it?`}
+                  >
                     <input type="hidden" name="testId" value={testId} />
                     <input type="hidden" name="sectionId" value={s.id} />
-                    <button type="submit" className="btn-danger btn-sm">
+                    <SubmitButton
+                      className="btn-danger btn-sm"
+                      pendingText="Deleting…"
+                    >
                       Delete
-                    </button>
-                  </form>
+                    </SubmitButton>
+                  </ConfirmForm>
                 )}
               </div>
             </div>

@@ -5,8 +5,13 @@ import { defineConfig, devices } from "@playwright/test";
  * server actions, real PostgreSQL. The dev server is started for us and reused
  * if one is already running on the port.
  */
+// E2E_PORT=3100 runs the suite beside a dev server already on 3000.
+const port = process.env.E2E_PORT ?? "3000";
+
 export default defineConfig({
   testDir: "./e2e",
+  // Removes the fixtures a previous run left, so runs do not depend on order.
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -16,7 +21,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: `http://localhost:${port}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     // The camera-proctored exam asks for the webcam before it starts.
@@ -44,12 +49,12 @@ export default defineConfig({
   // Test the production build: no dev-mode on-demand compilation, so server
   // actions and pages respond immediately, matching how the app is deployed.
   webServer: {
-    command: "npm run build && npm run start",
+    command: `npm run build && npx next start -p ${port}`,
     // The synthetic camera below shows a test pattern, not a face, so the
     // start-of-test face check is turned off. Everything else about the camera
     // path - permission, capture, upload, warnings - is exercised for real.
     env: { PROCTOR_FACE_GATE: "off" },
-    url: "http://localhost:3000/login",
+    url: `http://localhost:${port}/login`,
     timeout: 180_000,
     reuseExistingServer: false,
   },

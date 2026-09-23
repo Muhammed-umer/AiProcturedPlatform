@@ -6,7 +6,7 @@ import { jpegResponse } from "@/lib/proctor-image";
 
 export const dynamic = "force-dynamic";
 
-/** The most recent webcam frame for an attempt. Admin only. */
+/** The photo taken as the student's test ended. Admin only. */
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ attemptId: string }> },
@@ -24,11 +24,11 @@ export async function GET(
     .where(
       and(
         eq(proctorSnapshots.attemptId, attemptId),
-        eq(proctorSnapshots.kind, "latest"),
+        eq(proctorSnapshots.kind, "final"),
       ),
     )
     .limit(1);
 
-  if (!row) return new Response("No snapshot yet", { status: 404 });
+  if (!row) return new Response("No photo", { status: 404 });
   return jpegResponse(row.image);
 }

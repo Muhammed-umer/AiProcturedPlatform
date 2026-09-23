@@ -24,7 +24,7 @@ cp .env.example .env
 | Variable | Purpose |
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string |
-| `SESSION_SECRET` | A long random string. Change this before deploying. |
+| `SESSION_SECRET` | 32+ random characters. The server will not start with the example value. Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. |
 | `SECURE_COOKIES` | `true` once the app is served over HTTPS (see below). `false` for plain-HTTP development. |
 | `PROCTOR_FACE_GATE` | `on` by default: a student must be visible to the camera before a test will start. `off` relaxes only that check. |
 | `ANTHROPIC_API_KEY` | Optional. Only for Word/PDF question extraction. Leave blank to disable. |
@@ -46,12 +46,14 @@ committed, so nothing else is downloaded.
 npm run db:seed
 ```
 
-This prints the credentials it creates. The admin signs in with roll number
-`ADMIN` and password `Admin@123`, then is required to change it immediately.
+This creates one admin (`admin` / `admin`), one demo student (`user` / `user`)
+and a sample test. Change the admin password from the first-login screen or
+by resetting it before any real exam.
 
-> The seed script skips any account that already exists. If the admin password
-> has been changed and forgotten, reseeding will **not** reset it; the password
-> must be reset directly in the database.
+> Seeding **replaces every account**. To protect a live server it refuses to
+> run once any test has been submitted; `npm run db:seed -- --force` overrides
+> that on a development machine. Never run it on the lab server after the
+> first day.
 
 **5. Start the server:**
 
@@ -121,10 +123,34 @@ camera works with `npm run dev` and no certificate.
 
 ## Resetting the development database
 
-The seed script never touches existing rows, so to start over completely:
+To start over completely:
 
 ```bash
 npm run db:reset && npm run db:push && npm run db:seed
 ```
 
-`db:reset` drops every table. It refuses to run with `NODE_ENV=production`.
+`db:reset` drops every table. Like the seed, it refuses when the database holds
+submitted tests (add `-- --force` on a development machine) and always refuses
+with `NODE_ENV=production`.
+
+---
+
+## Before a real exam: checklist
+
+1. `SESSION_SECRET` is a fresh random value (the server refuses the example).
+2. The admin password is no longer `admin`.
+3. The site is served over HTTPS and `SECURE_COOKIES=true` (the camera needs it).
+4. It runs as `npm run build && npm start`, never `npm run dev`: development
+   mode shows every account on the sign-in page.
+5. A spare admin knows how to reset a student's password (Students page). A
+   student who types a wrong password 8 times is paused for 5 minutes; an admin
+   reset lifts that at once.
+
+## Capacity
+
+Measured on a laptop with `scripts/load` (see docs/testing.md): 100 students
+opening, pressing Continue, answering, uploading webcam frames every 15 s and
+all submitting in the same second, with the live monitor open throughout, ran
+with no errors and every answer stored and graded. Everyone submitting at once
+took under a second; 100 simultaneous sign-ins take about 2 s and do not stall
+students already writing.

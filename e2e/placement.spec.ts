@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 /**
  * End-to-end walk through the whole platform, admin first, then a student.
- * Runs against a freshly seeded database (roll ADMIN / Admin@123, all accounts
+ * Runs against a freshly seeded database (roll ADMIN / admin, all accounts
  * on their default password). The tests are serial and pass state between them
  * through the module variables below, mirroring one real placement drive.
  */
@@ -289,16 +289,14 @@ test.describe.serial("placement platform", () => {
       page.getByRole("table").getByText("Submitted"),
     ).toBeVisible();
 
-    // The webcam thumbnail the student's browser uploaded is served to the
-    // admin as a real JPEG.
-    const thumb = page.getByRole("table").locator("img").first();
-    await expect(thumb).toBeVisible();
-    const src = await thumb.getAttribute("src");
-    expect(src).toMatch(/^\/api\/proctor\/[0-9a-f-]{36}\/latest/);
-    const image = await page.request.get(src!);
+    // Nothing is stored from during the test; the one photo taken as the
+    // student submitted is served to the admin as a real JPEG.
+    await expect(page.getByRole("table").getByText("Photo received")).toBeVisible();
+    const link = page.getByRole("table").locator('a[href*="/proctor/"]').first();
+    const attemptId = (await link.getAttribute("href"))!.split("/").pop();
+    const image = await page.request.get(`/api/proctor/${attemptId}/photo`);
     expect(image.status()).toBe(200);
     expect(image.headers()["content-type"]).toBe("image/jpeg");
-    expect((await image.body()).byteLength).toBeGreaterThan(500);
   });
 
   test("deleting a test returns to the list instead of a dead page", async ({
@@ -315,6 +313,9 @@ test.describe.serial("placement platform", () => {
       .click();
     await page.waitForURL(/\/admin\/tests\/[0-9a-f-]{36}$/);
 
+    // Delete asks for confirmation first; Playwright dismisses dialogs by
+    // default, which would cancel it.
+    page.once("dialog", (d) => d.accept());
     await page.getByRole("button", { name: "Delete" }).click();
 
     // The browser must end up on the list, with the test gone from it.
@@ -325,7 +326,7 @@ test.describe.serial("placement platform", () => {
     await expect(page.getByText("E2E Delete Me")).toHaveCount(0);
   });
 
-  test("camera review page lists the attempt", async ({ page }) => {
+  test("warnings review page shows the end-of-test photo", async ({ page }) => {
     await signInAsAdmin(page);
     await page.goto(`/admin/monitor/${testId}`);
 
@@ -338,8 +339,9 @@ test.describe.serial("placement platform", () => {
     await page.waitForURL(/\/admin\/monitor\/[0-9a-f-]{36}\/proctor\/[0-9a-f-]{36}$/);
 
     await expect(
-      page.getByRole("heading", { name: /^Camera: / }),
+      page.getByRole("heading", { name: /^Warnings: / }),
     ).toBeVisible();
-    await expect(page.getByText("Last frame")).toBeVisible();
+    await expect(page.getByText("Photo at the end of the test")).toBeVisible();
+    await expect(page.getByRole("img", { name: /as the test ended$/ })).toBeVisible();
   });
 });

@@ -1,18 +1,75 @@
 import clsx from "clsx";
 import Link from "next/link";
+import {
+  CollegeEmblem,
+  PrismMark,
+  PrismWordmark,
+  APP_TAGLINE,
+} from "@/components/college";
 
-export function Logo({ compact = false }: { compact?: boolean }) {
+export { SubmitButton, ConfirmForm } from "@/components/form-controls";
+
+/**
+ * The app's name and tagline. Links straight to the signed-in user's home
+ * (pass `href`), which is a quick in-app navigation. Linking to "/" instead
+ * went through a server redirect and felt like a full page reload.
+ * On narrow screens the tagline drops away, leaving the name.
+ */
+export function Logo({ href = "/" }: { href?: string }) {
   return (
-    <Link href="/" className="inline-flex items-center gap-2.5 group">
-      <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-ink font-black text-[15px] shadow-sm">
-        P
-      </span>
-      {!compact && (
-        <span className="font-bold text-[15px] tracking-tight">
-          Placement Test
+    <Link
+      href={href}
+      className="inline-flex items-center gap-2.5 min-w-0 rounded-md"
+    >
+      <PrismMark size={32} priority className="h-8 w-8" />
+      <span className="min-w-0 leading-tight">
+        <PrismWordmark className="block text-[19px] leading-none" />
+        <span className="hidden md:block text-[11.5px] text-ink-3 mt-1.5 truncate">
+          {APP_TAGLINE}
         </span>
-      )}
+      </span>
     </Link>
+  );
+}
+
+/** A small "back to" link above a page title. */
+export function BackLink({ href, children }: { href: string; children: string }) {
+  return (
+    <div className="mb-2">
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1 rounded text-[13.5px] font-medium text-ink-3 hover:text-ink"
+      >
+        <span aria-hidden="true">&larr;</span> {children}
+      </Link>
+    </div>
+  );
+}
+
+/** A heading for a block within a page, with an optional count or aside. */
+export function SectionTitle({
+  children,
+  count,
+  aside,
+  className = "mb-3",
+}: {
+  children: React.ReactNode;
+  count?: number;
+  aside?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={clsx("flex items-baseline justify-between gap-3", className)}>
+      <h2 className="text-[17px] font-bold tracking-tight">
+        {children}
+        {count !== undefined && (
+          <span className="text-ink-3 font-medium ml-2 text-[15px] tabular-nums">
+            {count}
+          </span>
+        )}
+      </h2>
+      {aside}
+    </div>
   );
 }
 
@@ -45,11 +102,14 @@ export function StatCard({
   value,
   hint,
   tone = "default",
+  href,
 }: {
   label: string;
   value: string | number;
   hint?: string;
   tone?: "default" | "brand" | "good" | "bad";
+  /** Makes the whole card a link to the page behind the number. */
+  href?: string;
 }) {
   const tones = {
     default: "bg-white border-line",
@@ -57,17 +117,41 @@ export function StatCard({
     good: "bg-emerald-50 border-emerald-200",
     bad: "bg-red-50 border-red-200",
   };
-  return (
-    <div className={clsx("rounded-xl border p-4 sm:p-5", tones[tone])}>
-      <div className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-ink-3">
+  const body = (
+    <>
+      <div className="flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-ink-3">
         {label}
+        {href && (
+          <span
+            aria-hidden="true"
+            className="text-[14px] leading-none text-ink-3 transition group-hover:translate-x-0.5 group-hover:text-ink"
+          >
+            &rarr;
+          </span>
+        )}
       </div>
       <div className="text-[26px] sm:text-[30px] font-bold tracking-tight mt-1.5 tabular-nums leading-none">
         {value}
       </div>
-      {hint && <div className="text-[12.5px] text-ink-3 mt-1.5">{hint}</div>}
-    </div>
+      {hint && <div className="text-[12.5px] text-ink-2 mt-1.5">{hint}</div>}
+    </>
   );
+  const classes = clsx("rounded-xl border p-4 sm:p-5", tones[tone]);
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className={clsx(
+          classes,
+          "group block transition hover:border-brand-400 hover:shadow-sm",
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+  return <div className={classes}>{body}</div>;
 }
 
 export function EmptyState({
@@ -80,15 +164,20 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="card p-10 text-center">
-      <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-full bg-brand-100 text-brand-700 text-xl font-bold">
-        !
+    <div className="card relative overflow-hidden px-6 py-10 text-center">
+      <div className="kolam absolute inset-0 opacity-60" aria-hidden="true" />
+      <div className="relative">
+        <CollegeEmblem
+          size={56}
+          decorative
+          className="mx-auto mb-3 h-14 w-14 opacity-[0.18]"
+        />
+        <h3 className="font-semibold text-[16px]">{title}</h3>
+        <p className="text-[14.5px] text-ink-2 mt-1 max-w-[46ch] mx-auto">
+          {message}
+        </p>
+        {action && <div className="mt-5">{action}</div>}
       </div>
-      <h3 className="font-semibold text-[16px]">{title}</h3>
-      <p className="text-[14.5px] text-ink-2 mt-1 max-w-[46ch] mx-auto">
-        {message}
-      </p>
-      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
@@ -127,13 +216,32 @@ export function Badge({
   children: React.ReactNode;
 }) {
   const tones = {
-    neutral: "bg-canvas text-ink-3 border border-line-2",
+    neutral: "bg-canvas text-ink-2 border border-line-2",
     brand: "bg-brand-100 text-brand-800",
     good: "bg-emerald-100 text-emerald-800",
     bad: "bg-red-100 text-red-800",
     warn: "bg-amber-100 text-amber-800",
   };
   return <span className={clsx("chip", tones[tone])}>{children}</span>;
+}
+
+const TEST_STATUS = {
+  draft: { label: "Draft", tone: "warn" },
+  published: { label: "Published", tone: "good" },
+  closed: { label: "Closed", tone: "neutral" },
+} as const;
+
+/** Where a test is in its life: being written, open to students, or over. */
+export function StatusBadge({ status }: { status: string }) {
+  const known = TEST_STATUS[status as keyof typeof TEST_STATUS];
+  return (
+    <Badge tone={known?.tone ?? "neutral"}>
+      {status === "published" && (
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+      )}
+      {known?.label ?? status}
+    </Badge>
+  );
 }
 
 export function TableWrap({ children }: { children: React.ReactNode }) {

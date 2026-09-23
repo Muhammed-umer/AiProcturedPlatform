@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { updateTestGroups } from "@/app/actions/admin";
-import { Alert } from "@/components/ui";
+import { Alert, SubmitButton } from "@/components/ui";
 
 /**
  * Which groups may see this test. Editable at any time, including after the
@@ -78,9 +78,13 @@ export function GroupAssign({
             })}
           </div>
 
-          <button type="submit" className="btn-primary w-full" disabled={!dirty}>
+          <SubmitButton
+            className="btn-primary w-full"
+            disabled={!dirty}
+            pendingText="Saving…"
+          >
             {dirty ? "Save groups" : "Saved"}
-          </button>
+          </SubmitButton>
         </form>
       )}
     </div>

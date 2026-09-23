@@ -1,4 +1,6 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { requireAdminPage } from "@/lib/session";
 import Link from "next/link";
 import { eq, asc, inArray } from "drizzle-orm";
 import { db } from "@/db";
@@ -10,7 +12,15 @@ import {
   groups,
   testGroups,
 } from "@/db/schema";
-import { PageHeader, Badge, Alert, Tooltip } from "@/components/ui";
+import {
+  PageHeader,
+  StatusBadge,
+  Alert,
+  Tooltip,
+  BackLink,
+  SubmitButton,
+  ConfirmForm,
+} from "@/components/ui";
 import { setTestStatus, deleteTest } from "@/app/actions/admin";
 import { GroupAssign } from "./group-assign";
 import { SectionEditor } from "./section-editor";
@@ -21,6 +31,8 @@ import { DocumentImport } from "./document-import";
 import { VisibilitySettings } from "./visibility-settings";
 import { TestSettings } from "./test-settings";
 
+export const metadata: Metadata = { title: "Edit test" };
+
 export const dynamic = "force-dynamic";
 
 export default async function TestBuilderPage({
@@ -28,6 +40,7 @@ export default async function TestBuilderPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdminPage();
   const { id } = await params;
 
   const [test] = await db.select().from(tests).where(eq(tests.id, id)).limit(1);
@@ -90,14 +103,7 @@ export default async function TestBuilderPage({
 
   return (
     <div className="fade-up">
-      <div className="mb-2">
-        <Link
-          href="/admin/tests"
-          className="text-[13.5px] text-ink-3 hover:text-ink"
-        >
-          &larr; All tests
-        </Link>
-      </div>
+      <BackLink href="/admin/tests">All tests</BackLink>
 
       <PageHeader
         title={test.title}
@@ -106,17 +112,7 @@ export default async function TestBuilderPage({
         } · ${totalMarks} mark${totalMarks === 1 ? "" : "s"} total`}
         action={
           <div className="flex flex-wrap gap-2 items-center">
-            <Badge
-              tone={
-                test.status === "published"
-                  ? "good"
-                  : test.status === "closed"
-                    ? "neutral"
-                    : "warn"
-              }
-            >
-              {test.status}
-            </Badge>
+            <StatusBadge status={test.status} />
 
             {test.status === "published" && (
               <Link href={`/admin/monitor/${test.id}`} className="btn-ghost">
@@ -135,13 +131,13 @@ export default async function TestBuilderPage({
                 <form action={setTestStatus}>
                   <input type="hidden" name="testId" value={test.id} />
                   <input type="hidden" name="status" value="published" />
-                  <button
-                    type="submit"
+                  <SubmitButton
                     className="btn-primary"
                     disabled={!canPublish}
+                    pendingText="Publishing…"
                   >
                     Publish
-                  </button>
+                  </SubmitButton>
                 </form>
               </Tooltip>
             ) : (
@@ -149,20 +145,23 @@ export default async function TestBuilderPage({
                 <form action={setTestStatus}>
                   <input type="hidden" name="testId" value={test.id} />
                   <input type="hidden" name="status" value="closed" />
-                  <button type="submit" className="btn-ghost">
+                  <SubmitButton className="btn-ghost" pendingText="Closing…">
                     Close test
-                  </button>
+                  </SubmitButton>
                 </form>
               </Tooltip>
             )}
 
             <Tooltip label="Delete this test for good, along with its sections, questions, and every attempt, result and webcam frame. This cannot be undone.">
-              <form action={deleteTest}>
+              <ConfirmForm
+                action={deleteTest}
+                confirm={`Delete "${test.title}" for good? Its questions, attempts, results and webcam frames go with it. This cannot be undone.`}
+              >
                 <input type="hidden" name="testId" value={test.id} />
-                <button type="submit" className="btn-danger">
+                <SubmitButton className="btn-danger" pendingText="Deleting…">
                   Delete
-                </button>
-              </form>
+                </SubmitButton>
+              </ConfirmForm>
             </Tooltip>
           </div>
         }
@@ -192,7 +191,9 @@ export default async function TestBuilderPage({
           />
         </div>
 
-        <div className="space-y-6 xl:sticky xl:top-32">
+        {/* Five cards are taller than a 768px screen, so the column only
+            sticks on very wide screens, and then scrolls on its own. */}
+        <div className="space-y-6 2xl:sticky 2xl:top-6 2xl:max-h-[calc(100dvh-9.5rem)] 2xl:overflow-y-auto 2xl:overscroll-contain 2xl:p-1 2xl:-m-1">
           <GroupAssign
             testId={test.id}
             allGroups={allGroups}

@@ -55,6 +55,15 @@ export const users = pgTable(
     securityQuestion: text("security_question"),
     securityAnswerHash: text("security_answer_hash"),
     isActive: boolean("is_active").notNull().default(true),
+    /**
+     * Stamped into every session token. Raising it signs the account out
+     * everywhere: on logout, and whenever the password changes.
+     */
+    sessionVersion: integer("session_version").notNull().default(0),
+    /** Failed sign-in or security-answer tries since the last success. */
+    failedAttempts: integer("failed_attempts").notNull().default(0),
+    /** Set after too many failures; sign-in is refused until it passes. */
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -251,6 +260,11 @@ export const attempts = pgTable(
       .defaultNow(),
     /** Fixed once at start. The server, not the browser, owns the clock. */
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
+    /**
+     * When the student pressed Continue after the instructions. The clock
+     * really starts here; until then the questions are not sent at all.
+     */
+    begunAt: timestamp("begun_at", { withTimezone: true }),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     warningCount: integer("warning_count").notNull().default(0),
     totalScore: numeric("total_score", { precision: 8, scale: 2 }),
@@ -262,7 +276,8 @@ export const attempts = pgTable(
       t.userId,
       t.attemptNumber,
     ),
-    testIdx: index("attempts_test_idx").on(t.testId),
+    // The unique index above already covers lookups by test.
+    userIdx: index("attempts_user_idx").on(t.userId),
   }),
 );
 
@@ -328,9 +343,11 @@ export const proctorSnapshots = pgTable(
     attemptId: uuid("attempt_id")
       .notNull()
       .references(() => attempts.id, { onDelete: "cascade" }),
-    /** "latest" or "flagged". */
+    /**
+     * "final": the one photo taken as the test ends. Nothing is stored from
+     * during the test; the camera's judgements are recorded as violations.
+     */
     kind: text("kind").notNull(),
-    /** The violation type for flagged rows, e.g. no_face. */
     flagType: text("flag_type"),
     faceCount: integer("face_count"),
     /** Base64-encoded JPEG. */
@@ -341,10 +358,10 @@ export const proctorSnapshots = pgTable(
   },
   (t) => ({
     attemptIdx: index("proctor_snapshots_attempt_idx").on(t.attemptId),
-    // At most one live thumbnail per attempt.
-    latestIdx: uniqueIndex("proctor_snapshots_latest_idx")
+    // At most one end-of-test photo per attempt.
+    finalIdx: uniqueIndex("proctor_snapshots_final_idx")
       .on(t.attemptId)
-      .where(sql`kind = 'latest'`),
+      .where(sql`kind = 'final'`),
   }),
 );
 

@@ -1,13 +1,17 @@
+import type { Metadata } from "next";
 import { eq, desc } from "drizzle-orm";
+import { requireAdminPage } from "@/lib/session";
 import { db } from "@/db";
 import { passwordResetRequests, users } from "@/db/schema";
 import { PageHeader, TableWrap, EmptyState, Badge, Alert } from "@/components/ui";
-import { resolveResetRequest } from "@/app/actions/admin";
-import { generateDefaultPassword } from "@/lib/password";
+import { ResolveRequestButtons } from "../students/reset-password-button";
+
+export const metadata: Metadata = { title: "Reset requests" };
 
 export const dynamic = "force-dynamic";
 
 export default async function ResetRequestsPage() {
+  await requireAdminPage();
   const rows = await db
     .select({
       id: passwordResetRequests.id,
@@ -64,7 +68,7 @@ export default async function ResetRequestsPage() {
                   </td>
                   <td className="td text-ink">{r.name}</td>
                   <td className="td tabular-nums">
-                    {r.requestedAt.toLocaleString()}
+                    {r.requestedAt.toLocaleString("en-IN")}
                   </td>
                   <td className="td">
                     <Badge
@@ -76,41 +80,16 @@ export default async function ResetRequestsPage() {
                             : "neutral"
                       }
                     >
-                      {r.status}
+                      {r.status === "pending"
+                        ? "Pending"
+                        : r.status === "approved"
+                          ? "Approved"
+                          : "Dismissed"}
                     </Badge>
                   </td>
                   <td className="td text-right">
                     {r.status === "pending" ? (
-                      <div className="flex gap-2 justify-end">
-                        <form action={resolveResetRequest}>
-                          <input type="hidden" name="requestId" value={r.id} />
-                          <input type="hidden" name="userId" value={r.userId} />
-                          <input
-                            type="hidden"
-                            name="rollNumber"
-                            value={r.rollNumber}
-                          />
-                          <input
-                            type="hidden"
-                            name="decision"
-                            value="approved"
-                          />
-                          <button className="btn-primary btn-sm" type="submit">
-                            Reset to {generateDefaultPassword(r.rollNumber)}
-                          </button>
-                        </form>
-                        <form action={resolveResetRequest}>
-                          <input type="hidden" name="requestId" value={r.id} />
-                          <input
-                            type="hidden"
-                            name="decision"
-                            value="rejected"
-                          />
-                          <button className="btn-ghost btn-sm" type="submit">
-                            Dismiss
-                          </button>
-                        </form>
-                      </div>
+                      <ResolveRequestButtons requestId={r.id} />
                     ) : (
                       <span className="text-ink-3 text-[13.5px]">Handled</span>
                     )}
