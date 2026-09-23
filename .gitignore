@@ -27,3 +27,13 @@ playwright-report/
 
 # oh-my-claudecode plugin state
 .omc/
+
+# HyperFrames launch video: keep the composition, not its outputs
+videos/**/renders/
+videos/**/snapshots/
+videos/**/public/vo/*.wav
+videos/**/node_modules/
+videos/**/.hyperframes/
+
+# The launch video project and its outputs stay out of the repo
+videos/
